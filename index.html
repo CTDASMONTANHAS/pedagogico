@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestão Pedagógica · Instituto Cultural das Montanhas</title>
+  <link rel="icon" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form class="login-card" id="loginForm">
+      <img src="assets/logo.png" alt="Instituto Cultural das Montanhas">
+      <h1>Gestão Pedagógica</h1>
+      <p class="muted">Acesso restrito à coordenação</p>
+      <label>Senha de acesso
+        <input type="password" id="loginKey" autocomplete="current-password" required>
+      </label>
+      <button class="btn primary" type="submit">Entrar</button>
+      <p class="error" id="loginErr"></p>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="assets/logo.png" alt="">
+        <div><strong>Gestão Pedagógica</strong><span>Instituto Cultural das Montanhas</span></div>
+      </div>
+      <nav id="nav">
+        <a href="#painel" data-route="painel">Painel</a>
+        <a href="#turmas" data-route="turmas">Turmas e alunos</a>
+        <a href="#conferencia" data-route="conferencia">Conferência mensal</a>
+        <a href="#frequencia" data-route="frequencia">Frequência</a>
+        <a href="#alertas" data-route="alertas">Alertas de faltas <span class="nav-badge" id="navAlertas"></span></a>
+        <a href="#eventos" data-route="eventos">Eventos e viagens</a>
+        <a href="#relatorios" data-route="relatorios">Relatórios PDF</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="modeLabel"></span>
+        <button class="btn ghost small" id="btnReload" title="Recarregar dados da planilha">Atualizar dados</button>
+        <button class="btn ghost small" id="btnLogout">Sair</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <button class="btn ghost icon" id="btnMenu" aria-label="Menu">☰</button>
+        <h2 id="pageTitle"></h2>
+        <div id="pageActions" class="actions"></div>
+      </header>
+      <div id="demoBanner" class="banner hidden">Modo demonstração: os dados ficam só neste navegador. Configure a URL do Apps Script em <code>js/config.js</code> para usar a planilha.</div>
+      <main id="view" class="view"></main>
+    </div>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="modalTitle"></h3><button class="btn ghost icon" id="modalClose" aria-label="Fechar">✕</button></div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="loading" class="loading hidden"><div class="spinner"></div><span id="loadingText">Carregando…</span></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/logic.js"></script>
+  <script src="js/seed.js"></script>
+  <script src="js/pdf.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
