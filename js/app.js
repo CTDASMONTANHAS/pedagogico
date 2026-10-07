@@ -329,7 +329,7 @@ routes.conferencia = () => {
     <button class="btn primary" data-action="pdfConferencia">Gerar PDF</button>`);
   const ts = turmasAtivas(ui.areaConf);
   const r = resumoConferencia(ui.mes, ui.areaConf);
-  const meses = [5, 4, 3, 2, 1, 0].map(i => addMonths(ui.mes, -i));
+  const meses = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map(i => addMonths(ui.mes, -i));
   const sel = (t, k, v) => `<select class="st-select ${(CONF_STATUS[v || ''] || CONF_STATUS['']).cls}" data-change="setConf" data-turma="${t.id}" data-item="${k}">
     ${Object.entries(CONF_STATUS).map(([s, o]) => `<option value="${s}" ${s === (v || '') ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
   view.innerHTML = `${areaTabs('areaConf', true)}
@@ -357,8 +357,8 @@ routes.conferencia = () => {
         }).join('')}</tbody></table></div>` : '<p class="empty">Cadastre as turmas primeiro.</p>'}
     </section>
     <section class="card">
-      <h3>Histórico dos últimos 6 meses</h3>
-      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th>${meses.map(m => `<th>${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</th>`).join('')}</tr></thead>
+      <h3>Histórico dos últimos 12 meses <small class="muted">clique num mês para abri-lo</small></h3>
+      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMes" data-mes="${m}" class="${m === ui.mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</a></th>`).join('')}</tr></thead>
       <tbody>${ts.map(t => `<tr><td>${areaBadge(t.area)} ${esc(t.nome)}</td>${meses.map(m => {
         const c = conferencia(t.id, m) || {};
         const ok = CONF_ITENS.filter(([k]) => c[k] === 'EM_DIA').length;
@@ -369,6 +369,7 @@ routes.conferencia = () => {
     </section>`;
 };
 actions.setMes = el => { ui.mes = el.value || thisMonth(); render(); };
+actions.irMes = el => { ui.mes = el.dataset.mes; render(); window.scrollTo(0, 0); };
 function confRecord(tid) {
   return Object.assign({ id: uid(), turma_id: tid, mes: ui.mes }, conferencia(tid, ui.mes) || {});
 }

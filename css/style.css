@@ -149,6 +149,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .st-warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .st-bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
 .st-none { background: var(--surface-2); color: var(--muted); }
+.hist a { text-decoration: none; }
+.hist a.mes-atual { color: var(--text); font-weight: 700; text-decoration: underline; }
 .hist-cell { display: inline-block; min-width: 42px; text-align: center; padding: 3px 6px; border-radius: 6px; font-size: 12px; font-weight: 600; }
 .matrix td, .matrix th { text-align: center; padding: 6px 5px; }
 .matrix .sticky { position: sticky; left: 0; background: var(--surface); text-align: left; z-index: 1; min-width: 180px; }
