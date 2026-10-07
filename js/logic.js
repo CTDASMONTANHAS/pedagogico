@@ -24,6 +24,16 @@ const DOCS_EVENTO = [
   ['ficha_saude', 'Ficha de saúde'],
 ];
 
+// Pessoas que assinam os relatórios
+const SIGNATARIOS = ['Diego Padua Silva', 'Drielhe de Souza Sten Padua'];
+
+/** Signatários cadastrados (os padrões aparecem mesmo antes de salvar). */
+function assinaturas() {
+  const out = SIGNATARIOS.map(nome => DB.Assinaturas.find(a => a.nome === nome) || { id: '', nome, cargo: '', imagem: '' });
+  DB.Assinaturas.filter(a => !SIGNATARIOS.includes(a.nome)).forEach(a => out.push(a));
+  return out;
+}
+
 /* ---------- utilidades ---------- */
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();

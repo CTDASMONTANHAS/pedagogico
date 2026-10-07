@@ -1,5 +1,5 @@
 /* Comunicação com o Apps Script (planilha) — ou armazenamento local no modo demonstração. */
-const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes'];
+const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes', 'Assinaturas'];
 
 const API = {
   get demo() { return !window.APP_CONFIG.API_URL; },
@@ -35,7 +35,10 @@ const API = {
 
 const Demo = {
   load() {
-    try { return JSON.parse(localStorage.getItem('ped_demo_db')) || this.empty(); } catch (e) { return this.mem || (this.mem = this.empty()); }
+    let db;
+    try { db = JSON.parse(localStorage.getItem('ped_demo_db')) || this.empty(); } catch (e) { db = this.mem || (this.mem = this.empty()); }
+    SHEETS.forEach(s => { if (!db[s]) db[s] = []; });
+    return db;
   },
   store(db) {
     this.mem = db;

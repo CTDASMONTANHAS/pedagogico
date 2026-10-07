@@ -2,6 +2,18 @@
 const PDF = (() => {
   const M = 25.4; // margens da folha modelo (1 polegada)
   let logoData = null;
+  let assinante = null; // { nome, cargo, imagem, w, h } escolhido ao gerar o relatório
+
+  /** Define quem assina os próximos relatórios (null = linha em branco). */
+  async function setAssinante(rec) {
+    if (!rec) { assinante = null; return; }
+    assinante = Object.assign({}, rec);
+    if (rec.imagem) {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = rec.imagem; });
+      assinante.w = img.naturalWidth; assinante.h = img.naturalHeight;
+    }
+  }
 
   async function loadLogo() {
     if (logoData) return logoData;
@@ -94,8 +106,21 @@ const PDF = (() => {
     const d = new Date();
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
     doc.text(`Afonso Cláudio - ES, ${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}.`, W - M, y, { align: 'right' });
-    y += 20;
+    y += 22;
+    if (assinante && assinante.imagem && assinante.w) {
+      // imagem da assinatura sobre a linha, até 62 x 20 mm mantendo a proporção
+      let w = 62, h = w * assinante.h / assinante.w;
+      if (h > 20) { h = 20; w = h * assinante.w / assinante.h; }
+      doc.addImage(assinante.imagem, 'PNG', W / 2 - w / 2, y - h + 2, w, h);
+    }
     doc.line(W / 2 - 40, y, W / 2 + 40, y);
+    if (assinante) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(assinante.nome, W / 2, y + 5, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.text(assinante.cargo || label || 'Coordenação Pedagógica', W / 2, y + 9.5, { align: 'center' });
+      return y + 16;
+    }
     doc.text(label || 'Coordenação Pedagógica', W / 2, y + 5, { align: 'center' });
     return y + 12;
   }
@@ -363,7 +388,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { conferencia: relConferencia, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

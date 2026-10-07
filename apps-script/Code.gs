@@ -31,6 +31,7 @@ const SCHEMA = {
     'transporte', 'responsavel', 'documentos_exigidos', 'observacoes', 'status'],
   EventoParticipantes: ['id', 'evento_id', 'aluno_id', 'autorizacao', 'documento_identidade', 'cartao_sus',
     'termo_imagem', 'ficha_saude', 'observacoes'],
+  Assinaturas: ['id', 'nome', 'cargo', 'imagem', 'atualizado_em'],
 };
 
 /* ---------- Menu na planilha ---------- */

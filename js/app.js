@@ -393,7 +393,7 @@ actions.marcarTudo = async () => {
   });
   await saveMany('Conferencias', recs); toast('Atualizado'); render();
 };
-actions.pdfConferencia = () => run(() => PDF.conferencia(ui.mes, ui.areaConf), 'Gerando PDF…');
+actions.pdfConferencia = () => gerarPdf(() => PDF.conferencia(ui.mes, ui.areaConf));
 
 /* ================= FREQUÊNCIA ================= */
 routes.frequencia = () => {
@@ -467,7 +467,7 @@ actions.cycle = async el => {
   if (!next) { await remove('Frequencia', r.id); } else await save('Frequencia', Object.assign({ id: uid(), turma_id: ui.freqTurma, aluno_id: aid, data }, r || {}, { status: next }), true);
   render();
 };
-actions.pdfFrequencia = () => run(() => PDF.frequenciaTurma(ui.freqTurma, ui.freqDe, ui.freqAte), 'Gerando PDF…');
+actions.pdfFrequencia = () => gerarPdf(() => PDF.frequenciaTurma(ui.freqTurma, ui.freqDe, ui.freqAte));
 
 actions.lancarChamada = () => {
   const t = turma(ui.freqTurma);
@@ -567,7 +567,7 @@ actions.registrarContato = el => {
   ], { data: todayISO() }, v => save('Contatos', Object.assign({ id: uid(), aluno_id: a.id, alerta: String(s.seqAtual) }, v)));
 };
 actions.excluirContato = el => confirmBox('Excluir este registro de contato?', 'Excluir', () => remove('Contatos', el.dataset.id));
-actions.pdfAlertas = () => run(() => PDF.alertas(ui.areaAlertas), 'Gerando PDF…');
+actions.pdfAlertas = () => gerarPdf(() => PDF.alertas(ui.areaAlertas));
 
 /* ================= EVENTOS ================= */
 const EVENTO_FIELDS = [
@@ -670,7 +670,7 @@ actions.addParticipantes = el => {
   });
 };
 actions.marcarTurma = el => { const boxes = [...document.querySelectorAll(`#addp input[data-t="${el.dataset.t}"]`)]; const all = boxes.every(b => b.checked); boxes.forEach(b => { b.checked = !all; }); };
-actions.pdfEvento = el => run(() => PDF.eventoLista(el.dataset.id), 'Gerando PDF…');
+actions.pdfEvento = el => gerarPdf(() => PDF.eventoLista(el.dataset.id));
 actions.pdfAutorizacoes = el => run(() => PDF.autorizacoes(el.dataset.id, false), 'Gerando PDF…');
 
 /* ================= RELATÓRIOS ================= */
@@ -678,7 +678,7 @@ routes.relatorios = () => {
   setHeader('Relatórios em PDF');
   const areaSel = n => `<select name="${n}"><option value="">Música e Esporte</option>${Object.entries(AREAS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>`;
   const evOpts = DB.Eventos.slice().sort((a, b) => b.data_evento.localeCompare(a.data_evento)).map(e => `<option value="${e.id}">${fmtDate(e.data_evento)} — ${esc(e.nome)}</option>`).join('');
-  view.innerHTML = `<p class="muted">Todos os relatórios saem na folha timbrada do Instituto (logo, cabeçalho e rodapé com endereço), com espaço para assinatura da coordenação.</p>
+  view.innerHTML = `<p class="muted">Todos os relatórios saem na folha timbrada do Instituto (logo, cabeçalho e rodapé com endereço), Ao gerar, você escolhe quem assina — cadastre as assinaturas em <a href="#assinaturas">Assinaturas</a>.</p>
   <div class="reports">
     <form class="card report" data-report="conferencia"><h3>Conferência pedagógica mensal</h3><p class="muted small">Situação de plano de aula, relatório de aulas, chamada e fechamento por turma + lista de pendências por professor.</p>
       <label>Mês<input type="month" name="mes" value="${ui.mes}" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
@@ -707,15 +707,134 @@ routes.relatorios = () => {
       autorizacoes: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.autorizacoes(v.evento, !!v.pend); },
       turmas: () => PDF.turmasAlunos(v.area),
     }[f.dataset.report];
-    run(gen, 'Gerando PDF…').catch(() => {});
+    if (f.dataset.report === 'autorizacoes') run(gen, 'Gerando PDF…').catch(() => {}); // assinada pelo responsável do aluno
+    else gerarPdf(gen);
   }));
 };
+
+/* ================= ASSINATURAS ================= */
+routes.assinaturas = () => {
+  setHeader('Assinaturas dos relatórios');
+  view.innerHTML = `<p class="muted">A assinatura escolhida ao gerar um relatório sai sobre a linha de assinatura, com o nome e o cargo abaixo. Envie uma foto ou scan da assinatura (o fundo branco é removido automaticamente) ou desenhe com o mouse ou o dedo.</p>
+    <div class="cards sig-cards">${assinaturas().map((a, i) => `
+      <section class="card sig-card">
+        <h3>${esc(a.nome)}</h3>
+        <label class="field">Cargo / função (sai abaixo do nome)
+          <input class="input" value="${esc(a.cargo || '')}" placeholder="Ex.: Coordenador(a) Pedagógico(a)" data-change="sigCargo" data-i="${i}"></label>
+        <div class="sig-preview">${a.imagem ? `<img src="${a.imagem}" alt="Assinatura de ${esc(a.nome)}">` : '<span class="muted">Nenhuma assinatura cadastrada</span>'}</div>
+        <div class="actions">
+          <label class="btn ghost small">Enviar imagem<input type="file" accept="image/*" class="hidden" data-change="sigUpload" data-i="${i}"></label>
+          <button class="btn ghost small" data-action="sigDesenhar" data-i="${i}">Desenhar</button>
+          ${a.imagem ? `<button class="btn ghost small danger-text" data-action="sigRemover" data-i="${i}">Remover</button>` : ''}
+        </div>
+      </section>`).join('')}</div>`;
+};
+
+function salvarAssinatura(i, campos) {
+  const a = assinaturas()[i];
+  return save('Assinaturas', Object.assign({ id: a.id || uid(), nome: a.nome, cargo: a.cargo || '', imagem: a.imagem || '' }, campos, { atualizado_em: todayISO() }));
+}
+actions.sigCargo = el => salvarAssinatura(+el.dataset.i, { cargo: el.value.trim() });
+actions.sigRemover = el => confirmBox('Remover esta assinatura?', 'Remover', () => salvarAssinatura(+el.dataset.i, { imagem: '' }));
+actions.sigUpload = async el => {
+  const file = el.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+  const dataUrl = prepararAssinatura(img, true);
+  if (!dataUrl) { toast('Não encontrei traços na imagem. Use fundo branco e caneta escura.', 'error'); return; }
+  await salvarAssinatura(+el.dataset.i, { imagem: dataUrl });
+  render();
+};
+actions.sigDesenhar = el => {
+  const i = +el.dataset.i;
+  openModal(`Desenhar assinatura — ${assinaturas()[i].nome}`, `<p class="muted small">Assine no quadro abaixo com o mouse ou o dedo.</p>
+    <canvas id="sigPad" width="900" height="300" class="sig-pad"></canvas>
+    <div class="form-actions"><button class="btn ghost" id="sigLimpar">Limpar</button><button class="btn ghost" data-action="closeModal">Cancelar</button><button class="btn primary" id="sigSalvar">Salvar assinatura</button></div>`, true);
+  const c = $('#sigPad'), ctx = c.getContext('2d');
+  ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#10204a';
+  let drawing = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+  c.addEventListener('pointerdown', e => { drawing = true; c.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...pos(e)); });
+  c.addEventListener('pointermove', e => { if (!drawing) return; ctx.lineTo(...pos(e)); ctx.stroke(); });
+  c.addEventListener('pointerup', () => { drawing = false; });
+  $('#sigLimpar').onclick = () => ctx.clearRect(0, 0, c.width, c.height);
+  $('#sigSalvar').onclick = async () => {
+    const dataUrl = prepararAssinatura(c, false);
+    if (!dataUrl) { toast('Desenhe a assinatura primeiro.', 'error'); return; }
+    try { await salvarAssinatura(i, { imagem: dataUrl }); closeModal(); render(); } catch (e) { /* toast */ }
+  };
+};
+
+/**
+ * Recorta a assinatura, deixa o fundo transparente e reduz o tamanho
+ * (a célula da planilha aceita no máximo 50 mil caracteres).
+ */
+function prepararAssinatura(src, removerFundo) {
+  const W = src.naturalWidth || src.width, H = src.naturalHeight || src.height;
+  const scale0 = Math.min(1, 1400 / W);
+  const c = document.createElement('canvas');
+  c.width = Math.round(W * scale0); c.height = Math.round(H * scale0);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const k = (y * c.width + x) * 4;
+      if (removerFundo) {
+        const lum = 0.299 * p[k] + 0.587 * p[k + 1] + 0.114 * p[k + 2];
+        // fundo claro some; traço vira tinta azul-escura com opacidade proporcional
+        const a = lum > 190 ? 0 : Math.min(255, Math.round((190 - lum) * 2.2));
+        p[k] = 16; p[k + 1] = 32; p[k + 2] = 74; p[k + 3] = Math.min(p[k + 3], a);
+      }
+      if (p[k + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+  }
+  if (x1 < 0) return null;
+  ctx.putImageData(d, 0, 0);
+  const pad = 6;
+  x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(c.width - 1, x1 + pad); y1 = Math.min(c.height - 1, y1 + pad);
+  for (let maxW = 700; maxW >= 200; maxW -= 100) {
+    const s = Math.min(1, maxW / (x1 - x0 + 1));
+    const o = document.createElement('canvas');
+    o.width = Math.max(1, Math.round((x1 - x0 + 1) * s)); o.height = Math.max(1, Math.round((y1 - y0 + 1) * s));
+    o.getContext('2d').drawImage(c, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0, 0, o.width, o.height);
+    const url = o.toDataURL('image/png');
+    if (url.length < 45000) return url;
+  }
+  return null;
+}
+
+/** Pergunta quem assina e gera o PDF. A última escolha fica lembrada neste navegador. */
+function gerarPdf(gen) {
+  const lista = assinaturas();
+  let ultimo = '';
+  try { ultimo = localStorage.getItem('ped_assinante') || ''; } catch (e) { /* sem storage */ }
+  if (!lista.some(a => a.nome === ultimo) && ultimo !== '_nenhum') ultimo = lista[0].nome;
+  openModal('Quem assina o relatório?', `<form id="sigPick" class="sig-pick">
+    ${lista.map(a => `<label class="sig-opt"><input type="radio" name="s" value="${esc(a.nome)}" ${a.nome === ultimo ? 'checked' : ''}>
+      <span><strong>${esc(a.nome)}</strong><small class="muted">${esc(a.cargo || 'Coordenação Pedagógica')}</small></span>
+      ${a.imagem ? `<img src="${a.imagem}" alt="">` : '<small class="muted">sem imagem — sai só o nome</small>'}</label>`).join('')}
+    <label class="sig-opt"><input type="radio" name="s" value="_nenhum" ${ultimo === '_nenhum' ? 'checked' : ''}><span><strong>Sem assinatura</strong><small class="muted">linha em branco para assinar à mão</small></span></label>
+    <div class="form-actions"><a href="#assinaturas" class="btn ghost" data-action="closeModal">Gerenciar assinaturas</a><button class="btn primary">Gerar PDF</button></div></form>`);
+  $('#sigPick').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const v = new FormData(ev.target).get('s');
+    try { localStorage.setItem('ped_assinante', v); } catch (e) { /* sem storage */ }
+    closeModal();
+    try {
+      await run(async () => { await PDF.setAssinante(lista.find(a => a.nome === v) || null); await gen(); }, 'Gerando PDF…');
+    } catch (e) { /* toast já exibido */ }
+  });
+}
 
 /* ---------- eventos globais ---------- */
 document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-action]');
   if (!el || !actions[el.dataset.action] && el.dataset.action !== 'closeModal') return;
-  if (el.dataset.action === 'closeModal') { closeModal(); return; }
+  if (el.dataset.action === 'closeModal') { closeModal(); if (el.tagName !== 'A') ev.preventDefault(); return; }
   if (el.tagName === 'A' && el.getAttribute('href') === 'javascript:void 0') ev.preventDefault();
   Promise.resolve(actions[el.dataset.action](el, ev)).catch(() => {});
 });
