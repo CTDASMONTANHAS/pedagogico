@@ -20,7 +20,7 @@ async function run(fn, text) {
   busy(true, text);
   try { return await fn(); } catch (e) {
     console.error(e);
-    if (e.auth) { logout(); toast('Senha inválida. Entre novamente.', 'error'); } else toast(e.message || 'Erro', 'error');
+    if (e.auth) { logout(); toast('Senha inválida. Entre novamente.', 'error'); } else if (!e.semSenha) toast(e.message || 'Erro', 'error');
     throw e;
   } finally { busy(false); }
 }
@@ -737,11 +737,31 @@ function logout() {
   if (API.demo) return;
   $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
 }
+let criandoSenha = false;
+function modoCriarSenha() {
+  criandoSenha = true;
+  $('#login').classList.remove('hidden'); $('#app').classList.add('hidden');
+  document.querySelector('.login-card .muted').textContent = 'Primeiro acesso: crie a senha que a coordenação vai usar (mínimo 6 caracteres).';
+  $('#loginKey').setAttribute('autocomplete', 'new-password');
+  $('#loginKey2').parentElement.classList.remove('hidden');
+  document.querySelector('#loginForm button').textContent = 'Criar senha e entrar';
+}
 $('#loginForm').addEventListener('submit', async ev => {
   ev.preventDefault();
-  API.key = $('#loginKey').value.trim();
+  const k = $('#loginKey').value.trim();
   $('#loginErr').textContent = '';
-  try { await start(); } catch (e) { $('#loginErr').textContent = e.auth ? 'Senha incorreta.' : (e.message || 'Falha ao conectar.'); API.key = ''; }
+  if (criandoSenha) {
+    if (k.length < 6) { $('#loginErr').textContent = 'Use pelo menos 6 caracteres.'; return; }
+    if (k !== $('#loginKey2').value.trim()) { $('#loginErr').textContent = 'As senhas não conferem.'; return; }
+  }
+  API.key = k;
+  try {
+    if (criandoSenha) { await run(() => API.definirSenha(), 'Criando senha…'); criandoSenha = false; }
+    await start();
+  } catch (e) {
+    if (e.semSenha) { modoCriarSenha(); API.key = ''; return; }
+    $('#loginErr').textContent = e.auth ? 'Senha incorreta.' : (e.message || 'Falha ao conectar.'); API.key = '';
+  }
 });
 
 async function start() {
@@ -755,6 +775,6 @@ async function start() {
 }
 
 (function boot() {
-  if (API.demo || API.key) start().catch(() => { $('#login').classList.remove('hidden'); });
+  if (API.demo || API.key) start().catch(e => { if (e.semSenha) modoCriarSenha(); else $('#login').classList.remove('hidden'); });
   else $('#login').classList.remove('hidden');
 })();

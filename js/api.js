@@ -17,12 +17,14 @@ const API = {
     if (!json.ok) {
       const err = new Error(json.error || 'Erro na planilha');
       err.auth = json.auth === false;
+      err.semSenha = !!json.semSenha;
       throw err;
     }
     return json.data;
   },
 
   ping() { return this.call({ action: 'ping' }); },
+  definirSenha() { return this.call({ action: 'definirSenha' }); },
   getAll() { return this.call({ action: 'getAll' }); },
   save(sheet, record) { return this.call({ action: 'save', sheet, record }); },
   saveMany(sheet, records) { return this.call({ action: 'saveMany', sheet, records }); },

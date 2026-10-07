@@ -12,6 +12,13 @@
  *     Copie a URL gerada (termina em /exec) para js/config.js no site.
  */
 
+// Planilha usada como banco (funciona tanto em projeto vinculado quanto avulso)
+const SPREADSHEET_ID = '1kBwECN3nwie28-sc-JWl15kuJaIaThJZBhbbXu_XFtA';
+
+function ss_() {
+  return SpreadsheetApp.getActive() || SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
 const SCHEMA = {
   Turmas: ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'criado_em'],
   Alunos: ['id', 'turma_id', 'nome', 'data_nascimento', 'responsavel', 'telefone', 'ativo',
@@ -36,7 +43,7 @@ function onOpen() {
 }
 
 function setup() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ss_();
   Object.keys(SCHEMA).forEach(function (name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
@@ -122,8 +129,17 @@ function doPost(e) {
 
 function handle_(req) {
   try {
-    const key = PropertiesService.getScriptProperties().getProperty('API_KEY');
-    if (!key) return json_({ ok: false, error: 'Senha não configurada na planilha' });
+    const props = PropertiesService.getScriptProperties();
+    const key = props.getProperty('API_KEY');
+    if (!key) {
+      // Primeiro acesso: a senha informada passa a ser a senha do sistema
+      if (req.action === 'definirSenha' && String(req.key || '').length >= 6) {
+        props.setProperty('API_KEY', String(req.key));
+        setup();
+        return json_({ ok: true });
+      }
+      return json_({ ok: false, error: 'Primeiro acesso: crie a senha do sistema.', semSenha: true });
+    }
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
@@ -156,8 +172,8 @@ function json_(obj) {
 
 function sheet_(name) {
   if (!SCHEMA[name]) throw new Error('Aba inválida: ' + name);
-  let sh = SpreadsheetApp.getActive().getSheetByName(name);
-  if (!sh) { setup(); sh = SpreadsheetApp.getActive().getSheetByName(name); }
+  let sh = ss_().getSheetByName(name);
+  if (!sh) { setup(); sh = ss_().getSheetByName(name); }
   return sh;
 }
 
