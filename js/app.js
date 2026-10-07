@@ -207,6 +207,7 @@ const TURMA_FIELDS = [
   { name: 'professor', label: 'Professor(a)' },
   { name: 'dias_horario', label: 'Dias e horário', placeholder: 'Ex.: Ter e Qui, 14h–15h30' },
   { name: 'local', label: 'Local' },
+  { name: 'inicio', label: 'Mês de início da turma/projeto', type: 'month', hint: 'Meses anteriores não entram na conferência' },
 ];
 const ALUNO_FIELDS = [
   { name: 'nome', label: 'Nome completo', required: true, full: true },
@@ -326,10 +327,13 @@ actions.fichaAluno = el => {
 /* ================= CONFERÊNCIA ================= */
 routes.conferencia = () => {
   setHeader('Conferência mensal dos professores', `<input type="month" class="input" value="${ui.mes}" data-change="setMes">
-    <button class="btn primary" data-action="pdfConferencia">Gerar PDF</button>`);
-  const ts = turmasAtivas(ui.areaConf);
+    <button class="btn ghost" data-action="pdfConferenciaAnual">PDF anual</button>
+    <button class="btn primary" data-action="pdfConferencia">PDF do mês</button>`);
+  const ts = turmasConferencia(ui.areaConf, ui.mes);
+  const naoIniciadas = turmasAtivas(ui.areaConf).filter(t => !iniciou(t, ui.mes));
   const r = resumoConferencia(ui.mes, ui.areaConf);
-  const meses = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map(i => addMonths(ui.mes, -i));
+  const ano = ui.mes.slice(0, 4);
+  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${pad(i + 1)}`);
   const sel = (t, k, v) => `<select class="st-select ${(CONF_STATUS[v || ''] || CONF_STATUS['']).cls}" data-change="setConf" data-turma="${t.id}" data-item="${k}">
     ${Object.entries(CONF_STATUS).map(([s, o]) => `<option value="${s}" ${s === (v || '') ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
   view.innerHTML = `${areaTabs('areaConf', true)}
@@ -343,10 +347,11 @@ routes.conferencia = () => {
       <div class="card-head"><h3>Checklist de ${fmtMonth(ui.mes)}</h3>
         <div class="actions"><button class="btn ghost small" data-action="marcarTudo">Marcar não conferidos como “Em dia”</button></div></div>
       <p class="muted small">Para cada turma, confira no sistema de registro se o professor fez: plano de aula mensal, relatório das aulas, registro de chamada e fechamento do mês. As alterações são salvas automaticamente.</p>
+      ${naoIniciadas.length ? `<p class="muted small">${naoIniciadas.length} turma(s) ainda não tinham começado em ${fmtMonth(ui.mes)} e não aparecem: ${naoIniciadas.map(t => esc(t.nome)).join(', ')}.</p>` : ''}
       ${ts.length ? `<div class="table-wrap"><table class="table conf">
         <thead><tr><th>Turma</th><th>Professor(a)</th>${CONF_ITENS.map(([, l]) => `<th>${l}</th>`).join('')}<th>Observações</th></tr></thead>
         <tbody>${Object.keys(AREAS).filter(a => !ui.areaConf || a === ui.areaConf).map(area => {
-          const lista = turmasAtivas(area);
+          const lista = turmasConferencia(area, ui.mes);
           if (!lista.length) return '';
           return `<tr class="group"><td colspan="7">${AREAS[area]}</td></tr>` + lista.map(t => {
             const c = conferencia(t.id, ui.mes) || {};
@@ -354,12 +359,16 @@ routes.conferencia = () => {
               ${CONF_ITENS.map(([k]) => `<td>${sel(t, k, c[k])}</td>`).join('')}
               <td><input class="input obs" value="${esc(c.observacoes || '')}" placeholder="—" data-change="setConfObs" data-turma="${t.id}"></td></tr>`;
           }).join('');
-        }).join('')}</tbody></table></div>` : '<p class="empty">Cadastre as turmas primeiro.</p>'}
+        }).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma turma em andamento neste mês.</p>'}
     </section>
     <section class="card">
-      <h3>Histórico dos últimos 12 meses <small class="muted">clique num mês para abri-lo</small></h3>
-      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMes" data-mes="${m}" class="${m === ui.mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</a></th>`).join('')}</tr></thead>
-      <tbody>${ts.map(t => `<tr><td>${areaBadge(t.area)} ${esc(t.nome)}</td>${meses.map(m => {
+      <div class="card-head"><h3>Histórico de ${ano} <small class="muted">clique num mês para abri-lo · informe o mês de início de cada turma</small></h3>
+        <div class="actions"><button class="btn ghost small" data-action="irMes" data-mes="${Number(ano) - 1}-12">‹ ${Number(ano) - 1}</button>${Number(ano) < Number(thisMonth().slice(0, 4)) ? `<button class="btn ghost small" data-action="irMes" data-mes="${Number(ano) + 1}-01">${Number(ano) + 1} ›</button>` : ''}</div></div>
+      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th><th>Início</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMes" data-mes="${m}" class="${m === ui.mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</a></th>`).join('')}</tr></thead>
+      <tbody>${turmasAtivas(ui.areaConf).map(t => `<tr><td>${areaBadge(t.area)} ${esc(t.nome)}</td>
+        <td><input type="month" class="input inicio" value="${esc(t.inicio || '')}" data-change="setInicio" data-turma="${t.id}" title="Mês de início"></td>${meses.map(m => {
+        if (!iniciou(t, m)) return '<td><span class="hist-cell st-na" title="Antes do início da turma">n/a</span></td>';
+        if (m > thisMonth()) return '<td><span class="hist-cell st-future">·</span></td>';
         const c = conferencia(t.id, m) || {};
         const ok = CONF_ITENS.filter(([k]) => c[k] === 'EM_DIA').length;
         const bad = CONF_ITENS.filter(([k]) => c[k] === 'PENDENTE').length;
@@ -385,8 +394,14 @@ actions.setConfObs = async el => {
   rec.observacoes = el.value; rec.conferido_em = todayISO();
   await save('Conferencias', rec, true); toast('Observação salva');
 };
+actions.setInicio = async el => {
+  const t = turma(el.dataset.turma);
+  await save('Turmas', Object.assign({}, t, { inicio: el.value }), true);
+  toast(el.value ? `Início: ${fmtMonth(el.value)}` : 'Início removido');
+  render();
+};
 actions.marcarTudo = async () => {
-  const recs = turmasAtivas(ui.areaConf).map(t => {
+  const recs = turmasConferencia(ui.areaConf, ui.mes).map(t => {
     const rec = confRecord(t.id);
     CONF_ITENS.forEach(([k]) => { if (!rec[k]) rec[k] = 'EM_DIA'; });
     rec.conferido_em = todayISO();
@@ -395,6 +410,7 @@ actions.marcarTudo = async () => {
   await saveMany('Conferencias', recs); toast('Atualizado'); render();
 };
 actions.pdfConferencia = () => gerarPdf(() => PDF.conferencia(ui.mes, ui.areaConf));
+actions.pdfConferenciaAnual = () => gerarPdf(() => PDF.conferenciaAnual(ui.mes.slice(0, 4), ui.areaConf));
 
 /* ================= FREQUÊNCIA ================= */
 routes.frequencia = () => {
@@ -681,8 +697,10 @@ routes.relatorios = () => {
   const evOpts = DB.Eventos.slice().sort((a, b) => b.data_evento.localeCompare(a.data_evento)).map(e => `<option value="${e.id}">${fmtDate(e.data_evento)} — ${esc(e.nome)}</option>`).join('');
   view.innerHTML = `<p class="muted">Todos os relatórios saem na folha timbrada do Instituto (logo, cabeçalho e rodapé com endereço), Ao gerar, você escolhe quem assina — cadastre as assinaturas em <a href="#assinaturas">Assinaturas</a>.</p>
   <div class="reports">
-    <form class="card report" data-report="conferencia"><h3>Conferência pedagógica mensal</h3><p class="muted small">Situação de plano de aula, relatório de aulas, chamada e fechamento por turma + lista de pendências por professor.</p>
+    <form class="card report" data-report="conferencia"><h3>Conferência pedagógica mensal</h3><p class="muted small">Situação dos 4 itens por turma, resumo por área e por item, observações e pendências a cobrar de cada professor.</p>
       <label>Mês<input type="month" name="mes" value="${ui.mes}" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
+    <form class="card report" data-report="conferenciaAnual"><h3>Conferência pedagógica anual</h3><p class="muted small">Quadro do ano por turma e mês (itens em dia de 4), resumo por área, por item e por professor, e todas as pendências.</p>
+      <label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="frequencia"><h3>Frequência da turma</h3><p class="muted small">Gráfico de assiduidade, resumo por aluno e mapa de chamada.</p>
       <label>Turma<select name="turma">${turmaOptions(ui.freqTurma, true)}</select></label><div class="row2"><label>De<input type="date" name="de" class="input"></label><label>Até<input type="date" name="ate" class="input"></label></div><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="geral"><h3>Assiduidade geral</h3><p class="muted small">Comparativo de presença entre turmas, com alertas por turma.</p>
@@ -701,6 +719,7 @@ routes.relatorios = () => {
     const v = Object.fromEntries(new FormData(f));
     const gen = {
       conferencia: () => PDF.conferencia(v.mes || thisMonth(), v.area),
+      conferenciaAnual: () => PDF.conferenciaAnual(String(v.ano || thisMonth().slice(0, 4)), v.area),
       frequencia: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.frequenciaTurma(v.turma, v.de, v.ate); },
       geral: () => PDF.assiduidadeGeral(v.area, v.de, v.ate),
       alertas: () => PDF.alertas(v.area),

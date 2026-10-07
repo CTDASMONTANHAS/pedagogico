@@ -20,7 +20,7 @@ function ss_() {
 }
 
 const SCHEMA = {
-  Turmas: ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'criado_em'],
+  Turmas: ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'criado_em', 'inicio'],
   Alunos: ['id', 'turma_id', 'nome', 'data_nascimento', 'responsavel', 'telefone', 'ativo',
     'data_desligamento', 'motivo_desligamento', 'criado_em'],
   Conferencias: ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada',
@@ -175,7 +175,23 @@ function sheet_(name) {
   if (!SCHEMA[name]) throw new Error('Aba inválida: ' + name);
   let sh = ss_().getSheetByName(name);
   if (!sh) { setup(); sh = ss_().getSheetByName(name); }
+  if (!headersOk_[name]) { ensureHeaders_(sh, name); headersOk_[name] = true; }
   return sh;
+}
+
+const headersOk_ = {};
+
+/** Acrescenta colunas novas do SCHEMA em abas já existentes (sem mexer nos dados). */
+function ensureHeaders_(sh, name) {
+  const lc = sh.getLastColumn();
+  const ex = lc ? sh.getRange(1, 1, 1, lc).getValues()[0].map(String) : [];
+  SCHEMA[name].forEach(function (h) {
+    if (ex.indexOf(h) === -1) {
+      ex.push(h);
+      sh.getRange(1, ex.length).setValue(h).setFontWeight('bold').setBackground('#1f3b2d').setFontColor('#ffffff');
+      sh.getRange(2, ex.length, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
+    }
+  });
 }
 
 function cell_(v) {

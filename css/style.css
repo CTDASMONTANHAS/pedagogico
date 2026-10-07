@@ -151,6 +151,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .st-none { background: var(--surface-2); color: var(--muted); }
 .hist a { text-decoration: none; }
 .hist a.mes-atual { color: var(--text); font-weight: 700; text-decoration: underline; }
+.st-na { background: transparent; color: var(--muted); opacity: .6; font-weight: 400; }
+.st-future { background: transparent; color: var(--muted); }
+.hist .inicio { width: 132px; padding: 4px 6px; font-size: 12px; }
+.hist td:first-child { min-width: 230px; }
 .hist-cell { display: inline-block; min-width: 42px; text-align: center; padding: 3px 6px; border-radius: 6px; font-size: 12px; font-weight: 600; }
 .matrix td, .matrix th { text-align: center; padding: 6px 5px; }
 .matrix .sticky { position: sticky; left: 0; background: var(--surface); text-align: left; z-index: 1; min-width: 180px; }

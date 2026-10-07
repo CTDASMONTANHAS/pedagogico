@@ -159,7 +159,7 @@ const PDF = (() => {
     for (const ar of areas) {
       const r = resumoConferencia(mes, ar);
       y = section(doc, y, `${AREAS[ar]} — ${r.turmas} turma(s) · ${r.pct == null ? 0 : r.pct}% dos itens em dia`);
-      const body = turmasAtivas(ar).map(t => {
+      const body = turmasConferencia(ar, mes).map(t => {
         const c = conferencia(t.id, mes) || {};
         return [t.nome, t.professor || '', ...CONF_ITENS.map(([k]) => c[k] ? statusTxt(c[k]) : '—'), c.observacoes || ''];
       });
@@ -179,9 +179,20 @@ const PDF = (() => {
         },
       });
     }
+    // Resumo por item
+    y = section(doc, y, 'Resumo por item');
+    y = table(doc, y, {
+      head: [['Item', 'Em dia', 'Parcial', 'Pendente', 'Não conferido', '% em dia']],
+      body: CONF_ITENS.map(([k, l]) => {
+        const ts = areas.flatMap(ar => turmasConferencia(ar, mes));
+        const n = s => ts.filter(t => ((conferencia(t.id, mes) || {})[k] || '') === s).length;
+        return [l, n('EM_DIA'), n('PARCIAL'), n('PENDENTE'), n(''), ts.length ? Math.round(100 * n('EM_DIA') / ts.length) + '%' : '—'];
+      }),
+      styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left' } },
+    });
     // Pendências
     const pend = [];
-    areas.forEach(ar => turmasAtivas(ar).forEach(t => {
+    areas.forEach(ar => turmasConferencia(ar, mes).forEach(t => {
       const c = conferencia(t.id, mes) || {};
       const itens = CONF_ITENS.filter(([k]) => c[k] && c[k] !== 'EM_DIA').map(([k, l]) => `${l} (${statusTxt(c[k]).toLowerCase()})`);
       if (itens.length) pend.push([AREAS[ar], t.nome, t.professor || '', itens.join('; ')]);
@@ -193,6 +204,107 @@ const PDF = (() => {
     y = paragraph(doc, y, 'Legenda: Em dia · Parcial · Pendente · — (ainda não conferido).', { size: 8 });
     signature(doc, y);
     save(doc, `Conferencia_${mes}_${areaTxt(area)}`);
+  }
+
+  async function relConferenciaAnual(ano, area) {
+    const atual = thisMonth();
+    const ate = ano === atual.slice(0, 4) ? atual : `${ano}-12`;
+    const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${pad(i + 1)}`);
+    const areas = area ? [area] : Object.keys(AREAS);
+    const { doc, y: y0 } = await create('Relatório Anual de Conferência Pedagógica',
+      [`Área: ${areaTxt(area)}`, `Ano: ${ano}${ate < `${ano}-12` ? ` (até ${fmtMonth(ate)})` : ''}`], 'landscape');
+    let y = y0;
+    const mesesDa = t => meses.filter(m => m <= ate && iniciou(t, m));
+    const conta = (ts) => {
+      const c = { tot: 0, EM_DIA: 0, PARCIAL: 0, PENDENTE: 0, '': 0 };
+      ts.forEach(t => mesesDa(t).forEach(m => { const r = conferencia(t.id, m) || {}; CONF_ITENS.forEach(([k]) => { c.tot++; c[r[k] || '']++; }); }));
+      return c;
+    };
+    const linha = (rot, c) => [rot, c.tot, c.EM_DIA, c.PARCIAL, c.PENDENTE, c[''], c.tot ? Math.round(100 * c.EM_DIA / c.tot) + '%' : '—'];
+    const HEAD = ['Itens previstos', 'Em dia', 'Parcial', 'Pendente', 'Não conferido', '% em dia'];
+
+    y = section(doc, y, 'Resumo do ano por área');
+    y = table(doc, y, {
+      head: [['Área', ...HEAD]],
+      body: areas.map(ar => linha(AREAS[ar], conta(turmasAtivas(ar)))).concat(areas.length > 1 ? [linha('Total', conta(areas.flatMap(ar => turmasAtivas(ar))))] : []),
+      styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+    });
+
+    y = section(doc, y, 'Resumo do ano por item');
+    y = table(doc, y, {
+      head: [['Item', 'Em dia', 'Parcial', 'Pendente', 'Não conferido', '% em dia']],
+      body: CONF_ITENS.map(([k, l]) => {
+        const c = { EM_DIA: 0, PARCIAL: 0, PENDENTE: 0, '': 0 }; let tot = 0;
+        areas.forEach(ar => turmasAtivas(ar).forEach(t => mesesDa(t).forEach(m => { tot++; c[(conferencia(t.id, m) || {})[k] || '']++; })));
+        return [l, c.EM_DIA, c.PARCIAL, c.PENDENTE, c[''], tot ? Math.round(100 * c.EM_DIA / tot) + '%' : '—'];
+      }),
+      styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left' } },
+    });
+
+    for (const ar of areas) {
+      const ts = turmasAtivas(ar);
+      if (!ts.length) continue;
+      y = section(doc, y, `${AREAS[ar]} — itens em dia por mês (de 4)`);
+      y = table(doc, y, {
+        head: [['Turma', 'Professor(a)', 'Início', ...meses.map(m => MESES[+m.slice(5) - 1].slice(0, 3)), '% ano']],
+        body: ts.map(t => {
+          let ok = 0, tot = 0;
+          const cells = meses.map(m => {
+            if (!iniciou(t, m)) return 'n/a';
+            if (m > ate) return '';
+            const c = conferencia(t.id, m) || {};
+            const n = CONF_ITENS.filter(([k]) => c[k] === 'EM_DIA').length;
+            tot += 4; ok += n;
+            return CONF_ITENS.every(([k]) => !c[k]) ? '—' : n + '/4';
+          });
+          return [t.nome, t.professor || '', t.inicio ? fmtMonthShort(t.inicio) : '', ...cells, tot ? Math.round(100 * ok / tot) + '%' : '—'];
+        }),
+        styles: { fontSize: 6.8, halign: 'center', cellPadding: 1.1 },
+        columnStyles: { 0: { halign: 'left', cellWidth: 58 }, 1: { halign: 'left', cellWidth: 32 }, 2: { cellWidth: 13 } },
+        didParseCell: d => {
+          if (d.section === 'body' && d.column.index >= 3 && d.column.index < 15) {
+            const v = d.cell.raw;
+            if (v === '4/4') d.cell.styles.textColor = [20, 110, 50];
+            else if (/^[0-3]\/4$/.test(v)) { d.cell.styles.textColor = [180, 30, 30]; d.cell.styles.fontStyle = 'bold'; }
+            else d.cell.styles.textColor = [160, 160, 160];
+          }
+        },
+      });
+    }
+
+    // por professor
+    const profs = {};
+    areas.forEach(ar => turmasAtivas(ar).forEach(t => { const p = t.professor || '(sem professor)'; (profs[p] = profs[p] || []).push(t); }));
+    y = section(doc, y, 'Resumo por professor(a)');
+    y = table(doc, y, {
+      head: [['Professor(a)', 'Turmas', ...HEAD]],
+      body: Object.keys(profs).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(p => { const r = linha(p, conta(profs[p])); r.splice(1, 0, profs[p].length); return r; }),
+      styles: { halign: 'center', fontSize: 8 }, columnStyles: { 0: { halign: 'left' } },
+    });
+
+    // pendências e parciais do ano
+    const pend = [];
+    areas.forEach(ar => turmasAtivas(ar).forEach(t => mesesDa(t).forEach(m => {
+      const c = conferencia(t.id, m) || {};
+      const it = CONF_ITENS.filter(([k]) => c[k] === 'PARCIAL' || c[k] === 'PENDENTE').map(([k, l]) => `${l} (${statusTxt(c[k]).toLowerCase()})`);
+      if (it.length) pend.push([fmtMonthShort(m), AREAS[ar], t.nome, t.professor || '', it.join('; '), c.observacoes || '']);
+    })));
+    y = section(doc, y, `Itens parciais ou pendentes no ano: ${pend.length}`);
+    if (pend.length) y = table(doc, y, { head: [['Mês', 'Área', 'Turma', 'Professor(a)', 'Itens', 'Observações']], body: pend, styles: { fontSize: 7.5 } });
+
+    // meses ainda não conferidos
+    const nc = [];
+    areas.forEach(ar => turmasAtivas(ar).forEach(t => {
+      const ms = mesesDa(t).filter(m => CONF_ITENS.some(([k]) => !(conferencia(t.id, m) || {})[k]));
+      if (ms.length) nc.push([AREAS[ar], t.nome, t.professor || '', ms.map(fmtMonthShort).join(', ')]);
+    }));
+    if (nc.length) {
+      y = section(doc, y, 'Meses com itens ainda não conferidos');
+      y = table(doc, y, { head: [['Área', 'Turma', 'Professor(a)', 'Meses']], body: nc, styles: { fontSize: 7.5 } });
+    }
+    y = paragraph(doc, y, 'Legenda: x/4 = itens em dia no mês · — = mês não conferido · n/a = antes do início da turma · em branco = mês futuro.', { size: 8 });
+    signature(doc, y);
+    save(doc, `Conferencia_anual_${ano}_${areaTxt(area)}`);
   }
 
   async function frequenciaTurma(tid, de, ate) {
@@ -388,7 +500,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

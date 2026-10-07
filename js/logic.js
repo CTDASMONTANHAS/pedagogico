@@ -71,6 +71,10 @@ const aluno = id => DB.Alunos.find(a => a.id === id);
 const turmasDaArea = area => DB.Turmas.filter(t => (!area || t.area === area)).sort(byName);
 const turmasAtivas = area => turmasDaArea(area).filter(t => t.ativa !== 'NAO');
 const alunosDaTurma = (tid, todos) => DB.Alunos.filter(a => a.turma_id === tid && (todos || a.ativo !== 'NAO')).sort(byName);
+/** A turma já existia no mês? (mês de início vazio = sempre) */
+const iniciou = (t, mes) => !t.inicio || t.inicio <= mes;
+const turmasConferencia = (area, mes) => turmasAtivas(area).filter(t => iniciou(t, mes));
+const fmtMonthShort = ym => `${MESES[+ym.slice(5, 7) - 1].slice(0, 3)}/${ym.slice(2, 4)}`;
 const conferencia = (tid, mes) => DB.Conferencias.find(c => c.turma_id === tid && c.mes === mes);
 
 function registrosAluno(aid, de, ate) {
@@ -129,7 +133,7 @@ function alertasFaltas(area) {
 }
 
 function resumoConferencia(mes, area) {
-  const ts = turmasAtivas(area);
+  const ts = turmasConferencia(area, mes);
   let ok = 0, total = 0, pend = 0;
   ts.forEach(t => {
     const c = conferencia(t.id, mes) || {};
