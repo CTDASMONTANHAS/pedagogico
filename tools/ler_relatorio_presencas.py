@@ -80,14 +80,20 @@ def ler(path):
             if not nome or nome == 'NOME' or not re.fullmatch(r"[A-ZÀ-ÖØ-Ý' .\-]+", nome):
                 continue
             regs = {}
+            # outras letras (ex.: C = aula cancelada/feriado) não contam como presença nem falta
+            for x, t in cells:
+                if x > 400 and re.fullmatch(r'[A-Z]{1,2}', t) and t not in ('P', 'A', 'F', 'J', 'FJ'):
+                    col = min(colunas, key=lambda c: abs(c[0] - x))
+                    out.setdefault('outras_marcas', {}).setdefault(col[1], set()).add(t)
             for x, t in marcas:
                 col = min(colunas, key=lambda c: abs(c[0] - x))
                 if abs(col[0] - x) <= 12:
                     regs[col[1]] = 'P' if t == 'P' else ('J' if t in ('J', 'FJ') else 'F')
             out['alunos'].append({'nome': nome, 'registros': regs})
     out['datas'].sort()
+    out['outras_marcas'] = {d: sorted(v) for d, v in sorted(out.get('outras_marcas', {}).items())}
     out['datas_com_chamada'] = sorted({d for a in out['alunos'] for d in a['registros']})
-    out['datas_sem_chamada'] = [d for d in out['datas'] if d not in out['datas_com_chamada']]
+    out['datas_sem_chamada'] = [d for d in out['datas'] if d not in out['datas_com_chamada'] and d not in out['outras_marcas']]
     return out
 
 
