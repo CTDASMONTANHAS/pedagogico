@@ -776,5 +776,9 @@ async function start() {
 
 (function boot() {
   if (API.demo || API.key) start().catch(e => { if (e.semSenha) modoCriarSenha(); else $('#login').classList.remove('hidden'); });
-  else $('#login').classList.remove('hidden');
+  else {
+    $('#login').classList.remove('hidden');
+    // Detecta o primeiro acesso (senha ainda não criada) já ao abrir
+    API.ping().catch(e => { if (e.semSenha) modoCriarSenha(); });
+  }
 })();
