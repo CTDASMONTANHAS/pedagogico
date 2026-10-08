@@ -206,6 +206,63 @@ const PDF = (() => {
     save(doc, `Conferencia_${mes}_${areaTxt(area)}`);
   }
 
+  /** Conferência de uma turma: mês a mês, com resumo, assiduidade e observações. */
+  async function relConferenciaTurma(tid, ano) {
+    const t = turma(tid);
+    const atual = thisMonth();
+    const ate = ano === atual.slice(0, 4) ? atual : `${ano}-12`;
+    const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${pad(i + 1)}`).filter(m => m <= ate && iniciou(t, m));
+    const sub2 = [t.professor ? `Professor(a): ${t.professor}` : '', `Ano: ${ano}`, t.inicio ? `Início: ${fmtMonth(t.inicio)}` : ''].filter(Boolean).join(' · ');
+    const { doc, y: y0 } = await create('Conferência Pedagógica da Turma', [`${AREAS[t.area]} · ${t.nome}`, sub2]);
+    let y = y0;
+    const cor = d => {
+      if (d.section !== 'body') return;
+      const v = d.cell.raw;
+      if (v === 'Em dia') d.cell.styles.textColor = [20, 110, 50];
+      else if (v === 'Pendente') { d.cell.styles.textColor = [180, 30, 30]; d.cell.styles.fontStyle = 'bold'; }
+      else if (v === 'Parcial') { d.cell.styles.textColor = [170, 100, 0]; d.cell.styles.fontStyle = 'bold'; }
+    };
+    if (!meses.length) {
+      y = paragraph(doc, y, 'A turma ainda não havia iniciado no período selecionado.', { size: 10 });
+      signature(doc, y);
+      save(doc, `Conferencia_${t.nome}_${ano}`);
+      return;
+    }
+    y = section(doc, y, `Resumo de ${fmtMonth(meses[0])} a ${fmtMonth(meses[meses.length - 1])}`);
+    y = table(doc, y, {
+      head: [['Item', 'Em dia', 'Parcial', 'Pendente', 'Não conferido']],
+      body: CONF_ITENS.map(([k, l]) => {
+        const n = s => meses.filter(m => ((conferencia(tid, m) || {})[k] || '') === s).length;
+        return [l, n('EM_DIA'), n('PARCIAL'), n('PENDENTE'), n('')];
+      }),
+      styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left' } },
+    });
+    y = section(doc, y, 'Situação mês a mês');
+    y = table(doc, y, {
+      head: [['Mês', 'Plano de aula', 'Relatório de aulas', 'Registro de chamada', 'Fechamento mensal', 'Assiduidade']],
+      body: meses.map(m => {
+        const c = conferencia(tid, m) || {};
+        const st = statsTurma(tid, `${m}-01`, `${m}-31`);
+        return [fmtMonth(m), ...CONF_ITENS.map(([k]) => c[k] ? statusTxt(c[k]) : '—'), st.pct == null ? '—' : st.pct + '%'];
+      }),
+      styles: { halign: 'center', fontSize: 8 }, columnStyles: { 0: { halign: 'left', cellWidth: 34 } },
+      didParseCell: cor,
+    });
+    const obs = meses.map(m => [fmtMonth(m), ((conferencia(tid, m) || {}).observacoes || '').replace(/\s*\[Revisado em[^\]]*\]/, '').trim()]).filter(r => r[1]);
+    if (obs.length) {
+      y = section(doc, y, 'Observações da conferência');
+      y = table(doc, y, { head: [['Mês', 'Observações']], body: obs, styles: { fontSize: 8 }, columnStyles: { 0: { cellWidth: 34 } } });
+    }
+    const al = alunosDaTurma(tid);
+    const alr = alertasFaltas(t.area).filter(x => x.turma.id === tid);
+    if (al.length) {
+      y = paragraph(doc, y, `Alunos ativos: ${al.length}. Alunos com 2 faltas seguidas: ${alr.filter(x => x.nivel === 2).length}. Aptos a desligamento (3+ faltas seguidas): ${alr.filter(x => x.nivel === 3).length}.`, { size: 9 });
+    }
+    y = paragraph(doc, y, 'Legenda: Em dia · Parcial (aula sem registro) · Pendente · — (não conferido). Assiduidade calculada a partir dos relatórios de presença importados.', { size: 8 });
+    signature(doc, y);
+    save(doc, `Conferencia_${t.nome}_${ano}`);
+  }
+
   async function relConferenciaAnual(ano, area) {
     const atual = thisMonth();
     const ate = ano === atual.slice(0, 4) ? atual : `${ano}-12`;
@@ -500,7 +557,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

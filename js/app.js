@@ -239,6 +239,7 @@ routes.turma = id => {
   const t = turma(id);
   if (!t) { location.hash = '#turmas'; return; }
   setHeader(t.nome, `<button class="btn ghost" data-action="editTurma" data-id="${id}">Editar turma</button>
+    <button class="btn ghost" data-action="pdfConfTurma" data-id="${id}">Conferência (PDF)</button>
     <a class="btn ghost" href="#frequencia" data-action="verFreq" data-id="${id}">Frequência</a>
     <button class="btn primary" data-action="novoAluno" data-id="${id}">+ Aluno</button>`);
   const alunos = alunosDaTurma(id, ui.mostrarDesligados);
@@ -364,7 +365,7 @@ routes.conferencia = () => {
     <section class="card">
       <div class="card-head"><h3>Histórico de ${ano} <small class="muted">clique num mês para abri-lo · informe o mês de início de cada turma</small></h3>
         <div class="actions"><button class="btn ghost small" data-action="irMes" data-mes="${Number(ano) - 1}-12">‹ ${Number(ano) - 1}</button>${Number(ano) < Number(thisMonth().slice(0, 4)) ? `<button class="btn ghost small" data-action="irMes" data-mes="${Number(ano) + 1}-01">${Number(ano) + 1} ›</button>` : ''}</div></div>
-      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th><th>Início</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMes" data-mes="${m}" class="${m === ui.mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</a></th>`).join('')}</tr></thead>
+      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th><th>Início</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMes" data-mes="${m}" class="${m === ui.mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}/${m.slice(2, 4)}</a></th>`).join('')}<th>Relatório</th></tr></thead>
       <tbody>${turmasAtivas(ui.areaConf).map(t => `<tr><td>${areaBadge(t.area)} ${esc(t.nome)}</td>
         <td><input type="month" class="input inicio" value="${esc(t.inicio || '')}" data-change="setInicio" data-turma="${t.id}" title="Mês de início"></td>${meses.map(m => {
         if (!iniciou(t, m)) return '<td><span class="hist-cell st-na" title="Antes do início da turma">n/a</span></td>';
@@ -374,7 +375,7 @@ routes.conferencia = () => {
         const bad = CONF_ITENS.filter(([k]) => c[k] === 'PENDENTE').length;
         const none = CONF_ITENS.every(([k]) => !c[k]);
         return `<td><span class="hist-cell ${none ? 'st-none' : ok === 4 ? 'st-ok' : bad ? 'st-bad' : 'st-warn'}" title="${ok}/4 em dia">${none ? '—' : ok + '/4'}</span></td>`;
-      }).join('')}</tr>`).join('')}</tbody></table></div>
+      }).join('')}<td><button class="btn ghost small" data-action="pdfConfTurma" data-id="${t.id}" data-ano="${ano}" title="Relatório de conferência desta turma">PDF</button></td></tr>`).join('')}</tbody></table></div>
     </section>`;
 };
 actions.setMes = el => { ui.mes = el.value || thisMonth(); render(); };
@@ -410,6 +411,7 @@ actions.marcarTudo = async () => {
   await saveMany('Conferencias', recs); toast('Atualizado'); render();
 };
 actions.pdfConferencia = () => gerarPdf(() => PDF.conferencia(ui.mes, ui.areaConf));
+actions.pdfConfTurma = el => gerarPdf(() => PDF.conferenciaTurma(el.dataset.id, el.dataset.ano || thisMonth().slice(0, 4)));
 actions.pdfConferenciaAnual = () => gerarPdf(() => PDF.conferenciaAnual(ui.mes.slice(0, 4), ui.areaConf));
 
 /* ================= FREQUÊNCIA ================= */
@@ -699,6 +701,8 @@ routes.relatorios = () => {
   <div class="reports">
     <form class="card report" data-report="conferencia"><h3>Conferência pedagógica mensal</h3><p class="muted small">Situação dos 4 itens por turma, resumo por área e por item, observações e pendências a cobrar de cada professor.</p>
       <label>Mês<input type="month" name="mes" value="${ui.mes}" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
+    <form class="card report" data-report="conferenciaTurma"><h3>Conferência de uma turma</h3><p class="muted small">Os 4 itens mês a mês, assiduidade, resumo do período e todas as observações da turma.</p>
+      <label>Turma<select name="turma">${turmaOptions('', true)}</select></label><label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="conferenciaAnual"><h3>Conferência pedagógica anual</h3><p class="muted small">Quadro do ano por turma e mês (itens em dia de 4), resumo por área, por item e por professor, e todas as pendências.</p>
       <label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="frequencia"><h3>Frequência da turma</h3><p class="muted small">Gráfico de assiduidade, resumo por aluno e mapa de chamada.</p>
@@ -720,6 +724,7 @@ routes.relatorios = () => {
     const gen = {
       conferencia: () => PDF.conferencia(v.mes || thisMonth(), v.area),
       conferenciaAnual: () => PDF.conferenciaAnual(String(v.ano || thisMonth().slice(0, 4)), v.area),
+      conferenciaTurma: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.conferenciaTurma(v.turma, String(v.ano || thisMonth().slice(0, 4))); },
       frequencia: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.frequenciaTurma(v.turma, v.de, v.ate); },
       geral: () => PDF.assiduidadeGeral(v.area, v.de, v.ate),
       alertas: () => PDF.alertas(v.area),
