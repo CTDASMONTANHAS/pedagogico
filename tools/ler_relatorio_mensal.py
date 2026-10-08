@@ -64,12 +64,19 @@ def ler(path):
         elif not out['aulas'] and 'Galeria de fotos' not in t:
             plano_txt.append(t)
 
-    # Plano: texto depois da "Descrição" (ignora o cabeçalho com projeto, gestores, educadores...)
+    # Plano: texto que vem depois de cada título "Plano mensal" (o título também rotula a carga
+    # horária no cabeçalho, ex. "Plano mensal\n03h" — esse caso é ignorado)
     p = '\n'.join(plano_txt)
-    d = p.find('Descrição')
-    corpo = p[d:] if d >= 0 else p
-    etapas = re.findall(r'\d+ª etapa', corpo)
-    out['plano'] = {'chars': len(corpo), 'etapas': len(etapas), 'inicio': corpo[:160].replace('\n', ' ')}
+    fim = r'(?=Relatório de conclusão mensal|\nDescrição\n|\nCarga horária\n|Instituto Cultural Das Montanhas|\Z)'
+    blocos = [b.strip() for b in re.findall(r'Plano mensal\n(.*?)' + fim, p, flags=re.S)]
+    blocos = [re.sub(r'^Plano Mensal\n', '', b) for b in blocos if b and not re.match(r'\d+h', b)]
+    corpo = '\n'.join(blocos)
+    out['plano'] = {'chars': len(corpo), 'inicio': corpo[:160].replace('\n', ' ')}
+    m = re.search(r'Relatório de conclusão mensal\s*\n\s*Situação:\s*\n?\s*([^\n]+)', full)
+    out['conclusao_mensal'] = m.group(1).strip() if m else ''
+    m = re.search(r'Nenhum atendido inscrito', full)
+    if m:
+        out['inscritos'] = 0
     return out
 
 
