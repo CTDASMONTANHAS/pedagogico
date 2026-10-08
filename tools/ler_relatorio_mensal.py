@@ -71,6 +71,10 @@ def ler(path):
     blocos = [b.strip() for b in re.findall(r'Plano mensal\n(.*?)' + fim, p, flags=re.S)]
     blocos = [re.sub(r'^Plano Mensal\n', '', b) for b in blocos if b and not re.match(r'\d+h', b)]
     corpo = '\n'.join(blocos)
+    if not corpo and len(plano_txt) > 1:
+        # plano sem título: vem nas páginas seguintes à capa (antes da primeira aula)
+        corpo = re.split(r'Relatório de conclusão mensal', '\n'.join(plano_txt[1:]))[0].strip()
+    out['plano_texto'] = re.sub(r'\s+', ' ', corpo)
     out['plano'] = {'chars': len(corpo), 'inicio': corpo[:160].replace('\n', ' ')}
     m = re.search(r'Relatório de conclusão mensal\s*\n\s*Situação:\s*\n?\s*([^\n]+)', full)
     out['conclusao_mensal'] = m.group(1).strip() if m else ''
