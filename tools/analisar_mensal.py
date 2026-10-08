@@ -51,11 +51,8 @@ def main(paths):
             print(f"   {a['data']} {a['situacao']:<10} part {a['participantes']} freq {a['frequencia']} "
                   f"cont {a['conteudo_chars']} | {a['inicio_conteudo'][:60]}")
         for pg in pypdf.PdfReader(r['arquivo']).pages:
-            t = pg.extract_text() or ''
-            mm = re.match(r'\s*(\d{1,2})\s*\n\s*([A-ZÇ]+)\s*\n\s*\d{4}', t)
-            if mm and mm.group(2) in L.MESES:
-                k = f"{int(mm.group(1)):02d}/{L.MESES[mm.group(2)]:02d}"
-                textos[k] = re.sub(r'\s+', ' ', t[mm.end():t.find('ATIVIDADE')])
+            for data, _, corpo in L.aulas_da_pagina(L.limpa(pg.extract_text() or '')):
+                textos[f"{data[8:10]}/{data[5:7]}"] = re.sub(r'\s+', ' ', corpo)
     grupos = []
     for k in sorted(textos, key=lambda k: (k[3:], k[:2])):
         for g in grupos:

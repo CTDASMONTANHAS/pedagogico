@@ -23,6 +23,23 @@ def limpa(txt):
     return '\n'.join(linhas)
 
 
+CAB_AULA = re.compile(r'(?:^|\n)\s*(\d{1,2})\s*\n\s*([A-ZÇ]+)\s*\n\s*(\d{4})\s*\n\s*(\S+-feira|Sábado|Domingo)')
+
+
+def aulas_da_pagina(t):
+    """Uma página pode ter mais de uma aula. Devolve [(data ISO, segmento, conteúdo)]."""
+    cabs = [m for m in CAB_AULA.finditer(t) if m.group(2) in MESES]
+    out = []
+    for k, m in enumerate(cabs):
+        fim = cabs[k + 1].start() if k + 1 < len(cabs) else len(t)
+        seg = t[m.start():fim]
+        rel = t[m.end():fim]
+        a = rel.find('ATIVIDADE')
+        corpo = re.sub(r'Carga horária:.*', '', rel[:a if a >= 0 else len(rel)]).strip()
+        out.append((f"{m.group(3)}-{MESES[m.group(2)]:02d}-{int(m.group(1)):02d}", seg, corpo))
+    return out
+
+
 def ler(path):
     pages = [p.extract_text() or '' for p in pypdf.PdfReader(path).pages]
     full = '\n'.join(pages)
@@ -40,23 +57,21 @@ def ler(path):
     plano_txt = []
     for i, txt in enumerate(pages):
         t = limpa(txt)
-        aula = re.match(r'\s*(\d{1,2})\s*\n\s*([A-ZÇ]+)\s*\n\s*(\d{4})\s*\n\s*(\S+-feira|Sábado|Domingo)', t)
-        if aula and aula.group(2) in MESES:
-            dia, mes, ano = int(aula.group(1)), MESES[aula.group(2)], aula.group(3)
-            sit = re.search(r'ATIVIDADE:\s*\n?\s*([A-ZÇÃÕÉ ]+)', t)
-            part = re.search(r'Participantes\s*\n\s*(\d+)', t)
-            freq = re.search(r'Frequência\s*\n\s*([\d,]+)%', t)
-            ch = re.search(r'Carga horária:\s*([\dh]+)', t)
-            corpo = t[aula.end():sit.start() if sit else len(t)]
-            corpo = re.sub(r'Carga horária:.*', '', corpo).strip()
-            out['aulas'].append({
-                'data': f"{ano}-{mes:02d}-{dia:02d}", 'pagina': i + 1,
-                'situacao': sit.group(1).strip() if sit else '',
-                'carga': ch.group(1) if ch else '',
-                'conteudo_chars': len(corpo), 'inicio_conteudo': corpo[:90].replace('\n', ' '),
-                'participantes': int(part.group(1)) if part else None,
-                'frequencia': freq.group(1).replace(',', '.') if freq else None,
-            })
+        blocos = aulas_da_pagina(t)
+        if blocos:
+            for data, seg, corpo in blocos:
+                sit = re.search(r'ATIVIDADE:\s*\n?\s*([A-ZÇÃÕÉ ]+)', seg)
+                part = re.search(r'Participantes\s*\n\s*(\d+)', seg)
+                freq = re.search(r'Frequência\s*\n\s*([\d,]+)%', seg)
+                ch = re.search(r'Carga horária:\s*([\dh]+)', seg)
+                out['aulas'].append({
+                    'data': data, 'pagina': i + 1,
+                    'situacao': sit.group(1).strip() if sit else '',
+                    'carga': ch.group(1) if ch else '',
+                    'conteudo_chars': len(corpo), 'inicio_conteudo': corpo[:90].replace('\n', ' '),
+                    'participantes': int(part.group(1)) if part else None,
+                    'frequencia': freq.group(1).replace(',', '.') if freq else None,
+                })
         elif 'Lista de Inscritos' in t:
             m = re.search(r'(\d+)\s*\n\s*Inscritos\s*\n\s*Inscritos', t)
             if m:
