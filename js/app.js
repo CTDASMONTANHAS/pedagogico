@@ -556,7 +556,8 @@ actions.importarChamada = () => {
 
 /* ================= ALERTAS ================= */
 routes.alertas = () => {
-  setHeader('Alertas de faltas consecutivas', `<button class="btn primary" data-action="pdfAlertas">Gerar PDF para a secretaria</button>`);
+  setHeader('Alertas de faltas consecutivas', `<button class="btn ghost" data-action="pdfDesligados">PDF de desligados</button>
+    <button class="btn primary" data-action="pdfAlertas">Gerar PDF para a secretaria</button>`);
   const lista = alertasFaltas(ui.areaAlertas);
   const bloco = (nivel, titulo, desc, cls) => {
     const it = lista.filter(x => x.nivel === nivel);
@@ -574,8 +575,26 @@ routes.alertas = () => {
   view.innerHTML = `${areaTabs('areaAlertas', true)}
     <p class="muted small">Contam-se as faltas não justificadas seguidas a partir da última aula registrada. Uma presença ou falta justificada zera a sequência.</p>
     ${bloco(3, 'Aptos a desligamento — 3 ou mais faltas seguidas', 'Avaliar desligamento da turma', 'red')}
-    ${bloco(2, 'Atenção — 2 faltas seguidas', 'Secretaria deve contatar o aluno ou a família', 'amber')}`;
+    ${bloco(2, 'Atenção — 2 faltas seguidas', 'Secretaria deve contatar o aluno ou a família', 'amber')}
+    ${blocoDesligados()}`;
 };
+function blocoDesligados() {
+  const des = alunosDesligados(ui.areaAlertas);
+  const porTurma = {};
+  des.forEach(x => { porTurma[x.turma.id] = (porTurma[x.turma.id] || 0) + 1; });
+  return `<section class="card alert-gray"><div class="card-head"><h3>Alunos desligados <span class="count">${des.length}</span></h3>
+      <small class="muted">Aluno que estava no relatório de presenças e não aparece mais no relatório seguinte é desligado automaticamente na importação</small></div>
+    ${des.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Aluno(a)</th><th>Turma</th><th>Desligado em</th><th>Motivo</th><th>Última presença</th><th>Faltas seguidas ao sair</th><th>Presença</th><th></th></tr></thead><tbody>
+    ${des.map(x => `<tr><td><a href="javascript:void 0" data-action="fichaAluno" data-id="${x.aluno.id}"><strong>${esc(x.aluno.nome)}</strong></a></td>
+      <td>${areaBadge(x.turma.area)} ${esc(x.turma.nome)}</td>
+      <td>${fmtDate(x.aluno.data_desligamento) || '—'}</td>
+      <td><small>${esc(x.aluno.motivo_desligamento || '—')}</small></td>
+      <td>${x.ultimaPresenca ? fmtDate(x.ultimaPresenca) : '<span class="muted">nunca compareceu</span>'}</td>
+      <td>${x.faltasAoSair ? seqBadge(x.faltasAoSair) || x.faltasAoSair : '0'}</td>
+      <td>${pctBadge(x.stats.pct)}</td>
+      <td class="row-actions"><button class="btn ghost small" data-action="reativarAluno" data-id="${x.aluno.id}">Reativar</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="empty">Nenhum aluno desligado.</p>'}</section>`;
+}
 actions.registrarContato = el => {
   const a = aluno(el.dataset.id); const s = statsAluno(a.id);
   openForm(`Contato — ${a.nome}`, [
@@ -587,6 +606,7 @@ actions.registrarContato = el => {
 };
 actions.excluirContato = el => confirmBox('Excluir este registro de contato?', 'Excluir', () => remove('Contatos', el.dataset.id));
 actions.pdfAlertas = () => gerarPdf(() => PDF.alertas(ui.areaAlertas));
+actions.pdfDesligados = () => gerarPdf(() => PDF.desligados(ui.areaAlertas));
 
 /* ================= EVENTOS ================= */
 const EVENTO_FIELDS = [
@@ -709,6 +729,8 @@ routes.relatorios = () => {
       <label>Turma<select name="turma">${turmaOptions(ui.freqTurma, true)}</select></label><div class="row2"><label>De<input type="date" name="de" class="input"></label><label>Até<input type="date" name="ate" class="input"></label></div><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="geral"><h3>Assiduidade geral</h3><p class="muted small">Comparativo de presença entre turmas, com alertas por turma.</p>
       <label>Área${areaSel('area')}</label><div class="row2"><label>De<input type="date" name="de" class="input"></label><label>Até<input type="date" name="ate" class="input"></label></div><button class="btn primary">Gerar PDF</button></form>
+    <form class="card report" data-report="desligados"><h3>Alunos desligados</h3><p class="muted small">Quem saiu das turmas: data, motivo, última presença e faltas seguidas antes de sair, com resumo por turma.</p>
+      <label>Área${areaSel('area')}</label><div class="row2"><label>Desligados de<input type="date" name="de" class="input"></label><label>Até<input type="date" name="ate" class="input"></label></div><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="alertas"><h3>Faltas consecutivas (secretaria)</h3><p class="muted small">Alunos com 2 faltas seguidas (contatar) e 3+ (aptos a desligamento), com telefones e contatos feitos.</p>
       <label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="evento"><h3>Evento: participantes e documentação</h3><p class="muted small">Lista nominal com a situação de cada documento e as pendências.</p>
@@ -728,6 +750,7 @@ routes.relatorios = () => {
       frequencia: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.frequenciaTurma(v.turma, v.de, v.ate); },
       geral: () => PDF.assiduidadeGeral(v.area, v.de, v.ate),
       alertas: () => PDF.alertas(v.area),
+      desligados: () => PDF.desligados(v.area, v.de, v.ate),
       evento: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.eventoLista(v.evento); },
       autorizacoes: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.autorizacoes(v.evento, !!v.pend); },
       turmas: () => PDF.turmasAlunos(v.area),

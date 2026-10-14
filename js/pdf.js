@@ -517,6 +517,33 @@ const PDF = (() => {
     save(doc, `Assiduidade_geral_${areaTxt(area)}`);
   }
 
+  async function relDesligados(area, de, ate) {
+    const lista = alunosDesligados(area, de, ate);
+    const per = (de || ate) ? `Desligados de ${de ? fmtDate(de) : 'início'} a ${ate ? fmtDate(ate) : 'hoje'}` : `Situação em ${fmtDate(todayISO())}`;
+    const { doc, y: y0 } = await create('Relação de Alunos Desligados', [`Área: ${areaTxt(area)}`, per]);
+    let y = paragraph(doc, y0, 'Critério: o aluno é considerado desligado quando constava no relatório de presenças de um mês e não aparece mais no relatório seguinte, ou quando foi desligado manualmente pela coordenação.', { size: 9 });
+    // resumo por turma
+    const porTurma = {};
+    lista.forEach(x => { const k = x.turma.id; (porTurma[k] = porTurma[k] || { t: x.turma, n: 0, nunca: 0 }).n++; if (!x.ultimaPresenca) porTurma[k].nunca++; });
+    y = section(doc, y, `Resumo por turma — ${lista.length} aluno(s) desligado(s)`);
+    y = table(doc, y, {
+      head: [['Área', 'Turma', 'Desligados', 'Nunca compareceram', 'Alunos ativos hoje']],
+      body: Object.values(porTurma).sort((a, b) => b.n - a.n).map(r => [AREAS[r.t.area], r.t.nome, r.n, r.nunca, alunosDaTurma(r.t.id).length]),
+      styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' } },
+    });
+    y = section(doc, y, 'Relação nominal');
+    y = table(doc, y, {
+      head: [['Aluno(a)', 'Turma', 'Desligado em', 'Motivo', 'Última presença', 'Faltas seguidas ao sair', '% presença']],
+      body: lista.length ? lista.map(x => [x.aluno.nome, `${AREAS[x.turma.area]} / ${x.turma.nome}`, fmtDate(x.aluno.data_desligamento) || '—', x.aluno.motivo_desligamento || '—',
+        x.ultimaPresenca ? fmtDate(x.ultimaPresenca) : 'nunca compareceu', x.faltasAoSair, x.stats.pct == null ? '—' : x.stats.pct + '%'])
+        : [['Nenhum aluno desligado no período', '', '', '', '', '', '']],
+      styles: { fontSize: 7.6 }, columnStyles: { 2: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center', cellWidth: 16 }, 6: { halign: 'center', cellWidth: 14 } },
+      didParseCell: d => { if (d.section === 'body' && d.column.index === 4 && d.cell.raw === 'nunca compareceu') { d.cell.styles.textColor = [180, 30, 30]; } },
+    });
+    signature(doc, y);
+    save(doc, `Alunos_desligados_${areaTxt(area)}_${todayISO()}`);
+  }
+
   async function alertas(area) {
     const lista = alertasFaltas(area);
     const { doc, y: y0 } = await create('Alunos com Faltas Consecutivas', [`Área: ${areaTxt(area)}`, `Situação em ${fmtDate(todayISO())}`]);
@@ -636,7 +663,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

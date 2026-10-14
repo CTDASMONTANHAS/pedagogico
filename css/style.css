@@ -162,7 +162,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .matrix .cell.P { color: var(--ok); } .matrix .cell.F { background: var(--bad-soft); color: var(--bad); } .matrix .cell.J { background: var(--warn-soft); color: var(--warn); }
 .matrix .cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 .doc-check { width: 18px; height: 18px; cursor: pointer; accent-color: var(--ok); }
-.alert-red { border-left: 4px solid #d0443e; } .alert-amber { border-left: 4px solid #e0a526; }
+.alert-red { border-left: 4px solid #d0443e; } .alert-gray { border-left: 4px solid #8a8a85; } .alert-amber { border-left: 4px solid #e0a526; }
 .count { display: inline-block; min-width: 24px; text-align: center; padding: 1px 8px; border-radius: 99px; background: var(--brand-soft); font-size: 12px; }
 
 /* filtros */

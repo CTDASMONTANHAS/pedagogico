@@ -132,6 +132,22 @@ function alertasFaltas(area) {
   return out.sort((x, y) => y.stats.seqAtual - x.stats.seqAtual || x.aluno.nome.localeCompare(y.aluno.nome, 'pt-BR'));
 }
 
+/** Alunos desligados (saíram da lista de presença ou foram desligados manualmente). */
+function alunosDesligados(area, de, ate) {
+  return DB.Alunos.filter(a => a.ativo === 'NAO')
+    .map(a => {
+      const t = turma(a.turma_id);
+      const regs = registrosAluno(a.id);
+      const ultP = regs.filter(r => r.status === 'P').pop();
+      let seq = 0;
+      for (let i = regs.length - 1; i >= 0 && regs[i].status === 'F'; i--) seq++;
+      return { aluno: a, turma: t, ultimaPresenca: ultP ? ultP.data : '', ultimoRegistro: regs.length ? regs[regs.length - 1].data : '', faltasAoSair: seq, stats: statsAluno(a.id) };
+    })
+    .filter(x => x.turma && (!area || x.turma.area === area))
+    .filter(x => (!de || (x.aluno.data_desligamento || '') >= de) && (!ate || (x.aluno.data_desligamento || '') <= ate))
+    .sort((x, y) => (y.aluno.data_desligamento || '').localeCompare(x.aluno.data_desligamento || '') || x.turma.nome.localeCompare(y.turma.nome, 'pt-BR') || x.aluno.nome.localeCompare(y.aluno.nome, 'pt-BR'));
+}
+
 function resumoConferencia(mes, area) {
   const ts = turmasConferencia(area, mes);
   let ok = 0, total = 0, pend = 0;
