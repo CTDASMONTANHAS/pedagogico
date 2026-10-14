@@ -206,6 +206,85 @@ const PDF = (() => {
     save(doc, `Conferencia_${mes}_${areaTxt(area)}`);
   }
 
+  /** Ata de reunião no layout do modelo do Instituto. */
+  async function relAta(r) {
+    const AZUL = [26, 58, 92], ROTULO = [214, 228, 240], VALOR = [247, 249, 252], BORDA = [174, 205, 232];
+    const { doc, y: y0 } = await create('Ata de Reunião ' + (r.numero || ''), r.assunto || '');
+    const W = doc.internal.pageSize.getWidth();
+    let y = y0;
+    const titulo = (texto) => {
+      y = ensure(doc, y + 2, 14);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...AZUL);
+      doc.text(texto, M, y); doc.setTextColor(0);
+      y += 6;
+    };
+    const texto = (t) => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
+      String(t || '').split(/\n+/).filter(s => s.trim()).forEach(par => {
+        const linhas = doc.splitTextToSize(par.trim(), W - 2 * M);
+        linhas.forEach((l, i) => {
+          y = ensure(doc, y, 6);
+          const ultima = i === linhas.length - 1;
+          doc.text(l, M, y, ultima ? {} : { align: 'justify', maxWidth: W - 2 * M });
+          y += 5;
+        });
+        y += 1.5;
+      });
+      doc.setTextColor(0);
+    };
+    // quadro de informações
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M, top: 44, bottom: 24 }, theme: 'grid',
+      body: [['Data', fmtDataExtenso(r.data)], ['Horário/formato', horarioFormato(r)], ['Local', r.local || ''], ['Projeto', r.projeto || ''], ['Redator(a)', r.redator || '']],
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: { top: 1.6, bottom: 1.6, left: 2.6, right: 2.6 }, lineColor: BORDA, lineWidth: 0.2, textColor: [30, 30, 30], fillColor: VALOR },
+      columnStyles: { 0: { cellWidth: 49, fontStyle: 'bold', textColor: AZUL, fillColor: ROTULO } },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+    // participantes
+    titulo('PARTICIPANTES');
+    const parts = (r.participantes || []).filter(p => p.nome);
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M, top: 44, bottom: 24 }, theme: 'grid',
+      head: [['Nome', 'Função / Papel no Projeto']],
+      body: parts.length ? parts.map(p => [p.nome, p.funcao || '']) : [['', '']],
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 2, lineColor: BORDA, lineWidth: 0.2, textColor: [30, 30, 30] },
+      headStyles: { fillColor: ROTULO, textColor: AZUL, fontStyle: 'bold' },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+    titulo('RELATO DA REUNIÃO');
+    texto(r.relato);
+    (r.itens || []).filter(i => i.titulo || i.texto).forEach((it, k) => {
+      titulo(`${k + 1}. ${(it.titulo || '').toUpperCase()}`);
+      texto(it.texto);
+    });
+    titulo('ENCAMINHAMENTOS');
+    texto(r.encaminhamentos);
+    // lavrada
+    y = ensure(doc, y + 4, 12);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(`Lavrada em ${fmtDataExtenso(r.data)}.`, W / 2, y, { align: 'center' });
+    y += 8;
+    // assinaturas, 2 por linha
+    const sig = (r.assinantes || []).filter(s => s.nome);
+    for (let i = 0; i < sig.length; i += 2) {
+      y = ensure(doc, y + 18, 26);
+      sig.slice(i, i + 2).forEach((s, j) => {
+        const cx = sig.length - i === 1 ? W / 2 : (j === 0 ? M + (W - 2 * M) / 4 : W - M - (W - 2 * M) / 4);
+        doc.setDrawColor(80); doc.line(cx - 35, y, cx + 35, y); doc.setDrawColor(0);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(s.nome, cx, y + 5, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        if (s.funcao) doc.text(s.funcao, cx, y + 9.5, { align: 'center', maxWidth: 80 });
+        if (s.instituicao) doc.text(s.instituicao, cx, y + 14, { align: 'center', maxWidth: 80 });
+      });
+      y += 18;
+    }
+    y = ensure(doc, y + 6, 8);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+    doc.text(`Instituto Três Pontões de Ação Social e Cultural - Instituto Cultural das Montanhas  •  Documento interno  •  ${fmtDate(r.data)}`, W / 2, y, { align: 'center' });
+    doc.setTextColor(0);
+    save(doc, `Ata_${(r.numero || '').replace('/', '-')}_${r.professor || 'reuniao'}`);
+  }
+
   /** Conferência de uma turma: mês a mês, com resumo, assiduidade e observações. */
   async function relConferenciaTurma(tid, ano) {
     const t = turma(tid);
@@ -557,7 +636,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

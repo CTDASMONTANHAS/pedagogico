@@ -1,5 +1,5 @@
 /* Comunicação com o Apps Script (planilha) — ou armazenamento local no modo demonstração. */
-const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes', 'Assinaturas'];
+const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes', 'Assinaturas', 'Reunioes'];
 
 const API = {
   get demo() { return !window.APP_CONFIG.API_URL; },
