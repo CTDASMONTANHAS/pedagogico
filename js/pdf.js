@@ -266,7 +266,7 @@ const PDF = (() => {
     return url;
   }
   function caixas(doc, y, itens) {
-    const W = doc.internal.pageSize.getWidth(), cols = 4, gap = 3, bw = (W - 2 * M - gap * (cols - 1)) / cols, bh = 20;
+    const W = doc.internal.pageSize.getWidth(), cols = 4, gap = 3, bw = (W - 2 * M - gap * (cols - 1)) / cols, bh = 24;
     itens.forEach((it, i) => {
       const cx = M + (i % cols) * (bw + gap), cy = y + Math.floor(i / cols) * (bh + gap);
       doc.setFillColor(247, 249, 252); doc.setDrawColor(174, 205, 232); doc.roundedRect(cx, cy, bw, bh, 2, 2, 'FD');
@@ -277,7 +277,7 @@ const PDF = (() => {
       doc.text(doc.splitTextToSize(it.rotulo, bw - 6), cx + 3, cy + 15);
     });
     doc.setTextColor(0); doc.setDrawColor(0);
-    return y + Math.ceil(itens.length / cols) * (bh + gap) + 4;
+    return y + Math.ceil(itens.length / cols) * (bh + gap) + 8;
   }
 
   async function relPedagogico(tipo, ref) {
@@ -379,7 +379,7 @@ const PDF = (() => {
     const comFreq = ativos.filter(a => registrosAluno(a.id).length);
     const n3 = alertas.filter(a => a.nivel === 3).length, n2 = alertas.filter(a => a.nivel === 2).length;
     y = grafico(doc, y, `Situação dos ${comFreq.length} alunos ativos com frequência registrada (situação atual)`, {
-      type: 'doughnut', data: { labels: ['Regulares', '2 faltas seguidas', '3+ faltas seguidas'], datasets: [{ data: [Math.max(0, comFreq.length - n2 - n3), n2, n3], backgroundColor: [COR.ok, COR.warn, COR.bad] }] },
+      type: 'doughnut', data: { labels: [`Regulares (${Math.max(0, comFreq.length - n2 - n3)})`, `2 faltas seguidas (${n2})`, `3+ faltas seguidas (${n3})`], datasets: [{ data: [Math.max(0, comFreq.length - n2 - n3), n2, n3], backgroundColor: [COR.ok, COR.warn, COR.bad] }] },
       options: { plugins: { legend: { position: 'right', labels: { font: { size: 15 } } } }, cutout: '55%' },
     }, 300);
     if (alertas.length) {
@@ -436,7 +436,7 @@ const PDF = (() => {
     y = section(doc, y, '5. Reuniões mensais com a equipe');
     if (pessoas.length) {
       y = grafico(doc, y, 'Reuniões realizadas no período', {
-        type: 'doughnut', data: { labels: ['Realizadas', 'Não realizadas'], datasets: [{ data: [totalReun, Math.max(0, esperadas - totalReun)], backgroundColor: [COR.ok, COR.none] }] },
+        type: 'doughnut', data: { labels: [`Realizadas (${totalReun})`, `Não realizadas (${Math.max(0, esperadas - totalReun)})`], datasets: [{ data: [totalReun, Math.max(0, esperadas - totalReun)], backgroundColor: [COR.ok, COR.none] }] },
         options: { plugins: { legend: { position: 'right', labels: { font: { size: 15 } } } }, cutout: '55%' },
       }, 260);
       y = table(doc, y, {
