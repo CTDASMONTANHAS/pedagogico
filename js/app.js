@@ -147,7 +147,7 @@ function render() {
 
 /* ================= PAINEL ================= */
 routes.painel = () => {
-  setHeader('Painel');
+  setHeader('Painel', `<a class="btn primary" href="#relatorios">Relatório pedagógico</a>`);
   const mes = thisMonth();
   const al = alertasFaltas();
   const ativos = DB.Alunos.filter(a => a.ativo !== 'NAO' && turma(a.turma_id) && turma(a.turma_id).ativa !== 'NAO');
@@ -411,6 +411,8 @@ actions.marcarTudo = async () => {
   await saveMany('Conferencias', recs); toast('Atualizado'); render();
 };
 actions.pdfConferencia = () => gerarPdf(() => PDF.conferencia(ui.mes, ui.areaConf));
+actions.periodoPed = el => { const f = el.closest('form'); const p = PDF.periodoRelatorio(f.tipo.value, f.ref.value || thisMonth()); $('#periodoPedTxt').textContent = `${p.nome} (${p.meses.length} mês/meses)`; };
+actions.pdfPedagogico = () => gerarPdf(() => PDF.pedagogico('mensal', thisMonth()));
 actions.pdfConfTurma = el => gerarPdf(() => PDF.conferenciaTurma(el.dataset.id, el.dataset.ano || thisMonth().slice(0, 4)));
 actions.pdfConferenciaAnual = () => gerarPdf(() => PDF.conferenciaAnual(ui.mes.slice(0, 4), ui.areaConf));
 
@@ -721,6 +723,11 @@ routes.relatorios = () => {
   <div class="reports">
     <form class="card report" data-report="conferencia"><h3>Conferência pedagógica mensal</h3><p class="muted small">Situação dos 4 itens por turma, resumo por área e por item, observações e pendências a cobrar de cada professor.</p>
       <label>Mês<input type="month" name="mes" value="${ui.mes}" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
+    <form class="card report report-destaque" data-report="pedagogico"><h3>Relatório pedagógico completo</h3><p class="muted small">Todos os dados do sistema com gráficos: visão geral, pontos de atenção, frequência, alunos (alertas e desligados), conferência dos professores, reuniões e eventos.</p>
+      <label>Período<select name="tipo" data-change="periodoPed"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option></select></label>
+      <label>Mês de referência<input type="month" name="ref" value="${thisMonth()}" class="input" data-change="periodoPed"></label>
+      <p class="muted small" id="periodoPedTxt">${PDF.periodoRelatorio('mensal', thisMonth()).nome}</p>
+      <button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="conferenciaTurma"><h3>Conferência de uma turma</h3><p class="muted small">Os 4 itens mês a mês, assiduidade, resumo do período e todas as observações da turma.</p>
       <label>Turma<select name="turma">${turmaOptions('', true)}</select></label><label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="conferenciaAnual"><h3>Conferência pedagógica anual</h3><p class="muted small">Quadro do ano por turma e mês (itens em dia de 4), resumo por área, por item e por professor, e todas as pendências.</p>
@@ -746,6 +753,7 @@ routes.relatorios = () => {
     const gen = {
       conferencia: () => PDF.conferencia(v.mes || thisMonth(), v.area),
       conferenciaAnual: () => PDF.conferenciaAnual(String(v.ano || thisMonth().slice(0, 4)), v.area),
+      pedagogico: () => PDF.pedagogico(v.tipo, v.ref || thisMonth()),
       conferenciaTurma: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.conferenciaTurma(v.turma, String(v.ano || thisMonth().slice(0, 4))); },
       frequencia: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.frequenciaTurma(v.turma, v.de, v.ate); },
       geral: () => PDF.assiduidadeGeral(v.area, v.de, v.ate),

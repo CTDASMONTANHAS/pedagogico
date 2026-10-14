@@ -206,6 +206,258 @@ const PDF = (() => {
     save(doc, `Conferencia_${mes}_${areaTxt(area)}`);
   }
 
+  /* ---------- Relatório pedagógico (mensal / trimestral / semestral / anual) ---------- */
+  const COR = { musica: '#7b5cc4', esporte: '#2a8f57', ok: '#2a8f57', warn: '#e0a526', bad: '#d0443e', none: '#c9c9c9', azul: '#1a3a5c' };
+
+  function periodoRelatorio(tipo, ref) {
+    const ano = +ref.slice(0, 4), m = +ref.slice(5, 7);
+    let ini = m, fim = m, nome;
+    if (tipo === 'trimestral') { const q = Math.ceil(m / 3); ini = (q - 1) * 3 + 1; fim = ini + 2; nome = `${q}º trimestre de ${ano}`; }
+    else if (tipo === 'semestral') { const s = m <= 6 ? 1 : 2; ini = s === 1 ? 1 : 7; fim = ini + 5; nome = `${s}º semestre de ${ano}`; }
+    else if (tipo === 'anual') { ini = 1; fim = 12; nome = `Ano de ${ano}`; }
+    else { const t = fmtMonth(ref); nome = t.charAt(0).toUpperCase() + t.slice(1); }
+    const meses = [];
+    for (let k = ini; k <= fim; k++) { const mm = `${ano}-${pad(k)}`; if (mm <= thisMonth()) meses.push(mm); }
+    return { tipo, nome, meses: meses.length ? meses : [`${ano}-${pad(ini)}`], de: `${ano}-${pad(ini)}-01`, ate: `${ano}-${pad(fim)}-31` };
+  }
+
+  // rótulos de valor nas barras
+  const rotulos = (sufixo) => ({
+    id: 'rotulos', afterDatasetsDraw(chart) {
+      const ctx = chart.ctx; ctx.save(); ctx.font = 'bold 13px Helvetica, Arial'; ctx.fillStyle = '#333';
+      chart.data.datasets.forEach((ds, di) => {
+        if (chart.config.type !== 'bar' || chart.data.datasets.length > 1) return;
+        chart.getDatasetMeta(di).data.forEach((el, i) => {
+          const v = ds.data[i]; if (v == null) return;
+          const horiz = chart.options.indexAxis === 'y';
+          ctx.textAlign = horiz ? 'left' : 'center'; ctx.textBaseline = horiz ? 'middle' : 'bottom';
+          ctx.fillText(v + (sufixo || ''), horiz ? el.x + 6 : el.x, horiz ? el.y : el.y - 4);
+        });
+      });
+      ctx.restore();
+    },
+  });
+  function grafico(doc, y, titulo, config, hpx, extra) {
+    const wpx = 1000;
+    const cfg = Object.assign({}, config, { plugins: (config.plugins || []).concat(extra || []) });
+    const url = chartImageP(cfg, wpx, hpx);
+    const w = 165, h = w * hpx / wpx;
+    y = ensure(doc, y, h + 12);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(26, 58, 92);
+    doc.text(titulo, M, y); doc.setTextColor(0);
+    doc.addImage(url, 'PNG', (doc.internal.pageSize.getWidth() - w) / 2, y + 2, w, h);
+    return y + h + 8;
+  }
+  function chartImageP(config, w, h) {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.style.cssText = `position:fixed;left:-9999px;width:${w}px;height:${h}px`;
+    document.body.appendChild(canvas);
+    Chart.defaults.font.family = 'Helvetica, Arial, sans-serif';
+    Chart.defaults.font.size = 14;
+    Chart.defaults.color = '#333';
+    const cfg = Object.assign({}, config);
+    cfg.options = Object.assign({}, config.options, { responsive: false, animation: false, devicePixelRatio: 1 });
+    cfg.plugins = [{ id: 'bg', beforeDraw: c => { const x = c.ctx; x.save(); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore(); } }].concat(config.plugins || []);
+    const chart = new Chart(canvas, cfg);
+    const url = chart.toBase64Image('image/png');
+    chart.destroy(); canvas.remove();
+    Chart.defaults.font.size = 12;
+    return url;
+  }
+  function caixas(doc, y, itens) {
+    const W = doc.internal.pageSize.getWidth(), cols = 4, gap = 3, bw = (W - 2 * M - gap * (cols - 1)) / cols, bh = 20;
+    itens.forEach((it, i) => {
+      const cx = M + (i % cols) * (bw + gap), cy = y + Math.floor(i / cols) * (bh + gap);
+      doc.setFillColor(247, 249, 252); doc.setDrawColor(174, 205, 232); doc.roundedRect(cx, cy, bw, bh, 2, 2, 'FD');
+      doc.setFillColor(...(it.cor || [26, 58, 92])); doc.rect(cx, cy, bw, 1.2, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...(it.cor || [26, 58, 92]));
+      doc.text(String(it.valor), cx + 3, cy + 10);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(80);
+      doc.text(doc.splitTextToSize(it.rotulo, bw - 6), cx + 3, cy + 15);
+    });
+    doc.setTextColor(0); doc.setDrawColor(0);
+    return y + Math.ceil(itens.length / cols) * (bh + gap) + 4;
+  }
+
+  async function relPedagogico(tipo, ref) {
+    const P = periodoRelatorio(tipo, ref);
+    const { meses, de, ate } = P;
+    const ultimo = meses[meses.length - 1];
+    const TIPOS = { mensal: 'Mensal', trimestral: 'Trimestral', semestral: 'Semestral', anual: 'Anual' };
+    const { doc, y: y0 } = await create(`Relatório Pedagógico ${TIPOS[tipo]}`, [P.nome, `Música e Esporte · gerado em ${fmtDate(todayISO())}`]);
+    let y = y0;
+    const ts = turmasAtivas().filter(t => meses.some(m => iniciou(t, m)));
+    const noMes = (d, m) => d && d.slice(0, 7) === m;
+    const freqPer = DB.Frequencia.filter(r => r.data >= de && r.data <= ate && ts.some(t => t.id === r.turma_id));
+    const pctArr = (rs) => rs.length ? Math.round(100 * rs.filter(r => r.status === 'P').length / rs.length) : null;
+    const areaDe = tid => (turma(tid) || {}).area;
+    // conferência no período
+    const confCel = [];
+    ts.forEach(t => meses.filter(m => iniciou(t, m)).forEach(m => { const c = conferencia(t.id, m) || {}; CONF_ITENS.forEach(([k, l]) => confCel.push({ t, m, k, l, v: c[k] || '' })); }));
+    const pctConf = cel => cel.length ? Math.round(100 * cel.filter(c => c.v === 'EM_DIA').length / cel.length) : null;
+    const alertas = alertasFaltas();
+    const deslig = alunosDesligados('', de, ate);
+    const pessoas = typeof professores === 'function' ? professores() : [];
+    const reun = pessoas.map(p => ({ p, feitas: meses.filter(m => (typeof reunioesDo === 'function' ? reunioesDo(p.nome, m) : []).some(r => r.status === 'REALIZADA')).length }));
+    const totalReun = reun.reduce((s, r) => s + r.feitas, 0), esperadas = pessoas.length * meses.length;
+    const eventos = DB.Eventos.filter(e => e.data_evento >= de && e.data_evento <= ate).sort((a, b) => a.data_evento.localeCompare(b.data_evento));
+    const ativos = DB.Alunos.filter(a => a.ativo !== 'NAO' && ts.some(t => t.id === a.turma_id));
+    const pAss = pctArr(freqPer), pConf = pctConf(confCel);
+
+    // 1. visão geral
+    y = section(doc, y, '1. Visão geral do período');
+    y = caixas(doc, y, [
+      { valor: ts.filter(t => t.area === 'MUSICA').length + ' / ' + ts.filter(t => t.area === 'ESPORTE').length, rotulo: 'turmas ativas (Música / Esporte)' },
+      { valor: ativos.length, rotulo: 'alunos ativos nas turmas' },
+      { valor: pAss == null ? '—' : pAss + '%', rotulo: `assiduidade média (${freqPer.length} registros de presença)`, cor: pAss != null && pAss < 60 ? [208, 68, 62] : [42, 143, 87] },
+      { valor: pConf == null ? '—' : pConf + '%', rotulo: 'itens da conferência pedagógica em dia', cor: pConf != null && pConf < 60 ? [208, 68, 62] : [42, 143, 87] },
+      { valor: alertas.filter(a => a.nivel === 3).length, rotulo: 'alunos aptos a desligamento (3+ faltas seguidas, situação atual)', cor: [208, 68, 62] },
+      { valor: alertas.filter(a => a.nivel === 2).length, rotulo: 'alunos com 2 faltas seguidas (contatar família)', cor: [224, 165, 38] },
+      { valor: deslig.length, rotulo: 'alunos desligados no período', cor: [120, 120, 120] },
+      { valor: `${totalReun}/${esperadas}`, rotulo: 'reuniões mensais realizadas com a equipe' },
+    ]);
+    const destaques = [];
+    ts.forEach(t => { const p = pctArr(freqPer.filter(r => r.turma_id === t.id)); if (p != null && p < 60) destaques.push(`Assiduidade baixa em ${t.nome}: ${p}%.`); });
+    ts.forEach(t => { const p = pctConf(confCel.filter(c => c.t.id === t.id)); if (p != null && p < 50) destaques.push(`Conferência com menos da metade dos itens em dia em ${t.nome} (${p}%).`); });
+    const semReuniao = pessoas.filter(p => !(typeof reunioesDo === 'function' ? reunioesDo(p.nome, ultimo) : []).some(r => r.status === 'REALIZADA'));
+    if (semReuniao.length) destaques.push(`${semReuniao.length} pessoa(s) sem reunião registrada em ${fmtMonth(ultimo)}: ${semReuniao.map(p => p.nome).join(', ')}.`);
+    if (alertas.some(a => a.nivel === 3)) destaques.push(`${alertas.filter(a => a.nivel === 3).length} aluno(s) com 3 ou mais faltas seguidas aguardam decisão de desligamento.`);
+    if (deslig.length) destaques.push(`${deslig.length} aluno(s) desligado(s) no período, ${deslig.filter(x => !x.ultimaPresenca).length} sem nenhuma presença registrada.`);
+    if (destaques.length) {
+      y = section(doc, y, 'Pontos de atenção');
+      destaques.slice(0, 14).forEach(d => { y = paragraph(doc, y, '• ' + d, { size: 9 }); y -= 1; });
+      y += 3;
+    }
+
+    // 2. frequência
+    doc.addPage(); y = 48;
+    y = section(doc, y, '2. Frequência e assiduidade');
+    const tsF = ts.map(t => ({ t, p: pctArr(freqPer.filter(r => r.turma_id === t.id)), n: new Set(freqPer.filter(r => r.turma_id === t.id).map(r => r.data)).size })).filter(x => x.p != null).sort((a, b) => b.p - a.p);
+    if (tsF.length) {
+      y = grafico(doc, y, 'Assiduidade por turma (% de presença no período)', {
+        type: 'bar', data: { labels: tsF.map(x => shortName(x.t.nome)), datasets: [{ data: tsF.map(x => x.p), backgroundColor: tsF.map(x => x.t.area === 'MUSICA' ? COR.musica : COR.esporte), borderRadius: 4 }] },
+        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } },
+      }, Math.max(260, 50 + tsF.length * 34), [rotulos('%')]);
+    } else y = paragraph(doc, y, 'Nenhum relatório de presenças importado para o período.', { size: 9 });
+    if (meses.length > 1 && freqPer.length) {
+      const serie = area => meses.map(m => pctArr(freqPer.filter(r => noMes(r.data, m) && areaDe(r.turma_id) === area)));
+      y = grafico(doc, y, 'Evolução mensal da assiduidade por área', {
+        type: 'line', data: { labels: meses.map(fmtMonthShort), datasets: [
+          { label: 'Música', data: serie('MUSICA'), borderColor: COR.musica, backgroundColor: COR.musica, tension: .3, spanGaps: true, borderWidth: 3 },
+          { label: 'Esporte', data: serie('ESPORTE'), borderColor: COR.esporte, backgroundColor: COR.esporte, tension: .3, spanGaps: true, borderWidth: 3 }] },
+        options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } },
+      }, 340);
+      y = grafico(doc, y, 'Presenças e faltas registradas por mês', {
+        type: 'bar', data: { labels: meses.map(fmtMonthShort), datasets: [
+          { label: 'Presenças', data: meses.map(m => freqPer.filter(r => noMes(r.data, m) && r.status === 'P').length), backgroundColor: COR.ok, stack: 's' },
+          { label: 'Faltas justificadas', data: meses.map(m => freqPer.filter(r => noMes(r.data, m) && r.status === 'J').length), backgroundColor: COR.warn, stack: 's' },
+          { label: 'Faltas', data: meses.map(m => freqPer.filter(r => noMes(r.data, m) && r.status === 'F').length), backgroundColor: COR.bad, stack: 's' }] },
+        options: { plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true }, y: { stacked: true, ticks: { precision: 0 } } } },
+      }, 320);
+    }
+    if (tsF.length) {
+      y = table(doc, y, {
+        head: [['Área', 'Turma', 'Professor(a)', 'Aulas', '% presença']],
+        body: tsF.map(x => [AREAS[x.t.area], x.t.nome, x.t.professor || '', x.n, x.p + '%']),
+        styles: { fontSize: 7.6 }, columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' } },
+      });
+    }
+
+    // 3. alunos
+    doc.addPage(); y = 48;
+    y = section(doc, y, '3. Alunos: matrículas, alertas e desligamentos');
+    const porTurma = ts.map(t => ({ t, ativos: alunosDaTurma(t.id).length, desl: deslig.filter(x => x.turma.id === t.id).length })).filter(x => x.ativos || x.desl).sort((a, b) => b.ativos - a.ativos);
+    if (porTurma.length) {
+      y = grafico(doc, y, 'Alunos ativos e desligados no período, por turma', {
+        type: 'bar', data: { labels: porTurma.map(x => shortName(x.t.nome)), datasets: [
+          { label: 'Ativos', data: porTurma.map(x => x.ativos), backgroundColor: '#3d6fb0', stack: 's' },
+          { label: 'Desligados no período', data: porTurma.map(x => x.desl), backgroundColor: '#9a9a95', stack: 's' }] },
+        options: { indexAxis: 'y', plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true } } },
+      }, Math.max(280, 70 + porTurma.length * 30));
+    }
+    const comFreq = ativos.filter(a => registrosAluno(a.id).length);
+    const n3 = alertas.filter(a => a.nivel === 3).length, n2 = alertas.filter(a => a.nivel === 2).length;
+    y = grafico(doc, y, `Situação dos ${comFreq.length} alunos ativos com frequência registrada (situação atual)`, {
+      type: 'doughnut', data: { labels: ['Regulares', '2 faltas seguidas', '3+ faltas seguidas'], datasets: [{ data: [Math.max(0, comFreq.length - n2 - n3), n2, n3], backgroundColor: [COR.ok, COR.warn, COR.bad] }] },
+      options: { plugins: { legend: { position: 'right', labels: { font: { size: 15 } } } }, cutout: '55%' },
+    }, 300);
+    if (alertas.length) {
+      y = section(doc, y, 'Alunos em alerta de faltas');
+      y = table(doc, y, {
+        head: [['Aluno(a)', 'Turma', 'Faltas seguidas', 'Situação']],
+        body: alertas.map(x => [x.aluno.nome, x.turma.nome, x.stats.seqAtual, x.nivel === 3 ? 'Apto a desligamento' : 'Contatar família']),
+        styles: { fontSize: 7.6 }, columnStyles: { 2: { halign: 'center' } },
+        didParseCell: d => { if (d.section === 'body' && d.column.index === 3) d.cell.styles.textColor = d.cell.raw === 'Apto a desligamento' ? [180, 30, 30] : [170, 100, 0]; },
+      });
+    }
+    if (deslig.length) {
+      y = section(doc, y, `Alunos desligados no período: ${deslig.length}`);
+      y = table(doc, y, {
+        head: [['Aluno(a)', 'Turma', 'Desligado em', 'Última presença']],
+        body: deslig.map(x => [x.aluno.nome, x.turma.nome, fmtDate(x.aluno.data_desligamento), x.ultimaPresenca ? fmtDate(x.ultimaPresenca) : 'nunca compareceu']),
+        styles: { fontSize: 7.6 },
+      });
+    }
+
+    // 4. conferência
+    doc.addPage(); y = 48;
+    y = section(doc, y, '4. Conferência pedagógica dos professores');
+    const cnt = (cel, v) => cel.filter(c => c.v === v).length;
+    y = grafico(doc, y, 'Situação de cada item da conferência no período (turmas × meses)', {
+      type: 'bar', data: { labels: CONF_ITENS.map(([, l]) => l), datasets: [['EM_DIA', 'Em dia', COR.ok], ['PARCIAL', 'Parcial', COR.warn], ['PENDENTE', 'Pendente', COR.bad], ['', 'Não conferido', COR.none]]
+        .map(([v, l, c]) => ({ label: l, data: CONF_ITENS.map(([k]) => cnt(confCel.filter(x => x.k === k), v)), backgroundColor: c, stack: 's' })) },
+      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true } } },
+    }, 300);
+    if (meses.length > 1) {
+      y = grafico(doc, y, '% de itens em dia por mês e área', {
+        type: 'bar', data: { labels: meses.map(fmtMonthShort), datasets: [
+          { label: 'Música', data: meses.map(m => pctConf(confCel.filter(c => c.m === m && c.t.area === 'MUSICA')) || 0), backgroundColor: COR.musica },
+          { label: 'Esporte', data: meses.map(m => pctConf(confCel.filter(c => c.m === m && c.t.area === 'ESPORTE')) || 0), backgroundColor: COR.esporte }] },
+        options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } },
+      }, 320);
+    }
+    const confT = ts.map(t => ({ t, p: pctConf(confCel.filter(c => c.t.id === t.id)) })).filter(x => x.p != null).sort((a, b) => b.p - a.p);
+    if (confT.length) {
+      y = grafico(doc, y, '% de itens em dia por turma', {
+        type: 'bar', data: { labels: confT.map(x => shortName(x.t.nome)), datasets: [{ data: confT.map(x => x.p), backgroundColor: confT.map(x => x.p >= 75 ? COR.ok : x.p >= 50 ? COR.warn : COR.bad), borderRadius: 4 }] },
+        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } },
+      }, Math.max(260, 50 + confT.length * 30), [rotulos('%')]);
+      y = table(doc, y, {
+        head: [['Turma', 'Professor(a)', ...CONF_ITENS.map(([, l]) => l), '% em dia']],
+        body: confT.map(x => { const cc = confCel.filter(c => c.t.id === x.t.id); return [x.t.nome, x.t.professor || '', ...CONF_ITENS.map(([k]) => { const c = cc.filter(z => z.k === k); return `${cnt(c, 'EM_DIA')}/${c.length}`; }), x.p + '%']; }),
+        styles: { fontSize: 7, halign: 'center' }, columnStyles: { 0: { halign: 'left', cellWidth: 46 }, 1: { halign: 'left', cellWidth: 32 } },
+      });
+      y = paragraph(doc, y, 'Nas colunas dos itens: meses em dia / meses conferidos para a turma no período.', { size: 7.5 });
+    }
+
+    // 5. reuniões e eventos
+    doc.addPage(); y = 48;
+    y = section(doc, y, '5. Reuniões mensais com a equipe');
+    if (pessoas.length) {
+      y = grafico(doc, y, 'Reuniões realizadas no período', {
+        type: 'doughnut', data: { labels: ['Realizadas', 'Não realizadas'], datasets: [{ data: [totalReun, Math.max(0, esperadas - totalReun)], backgroundColor: [COR.ok, COR.none] }] },
+        options: { plugins: { legend: { position: 'right', labels: { font: { size: 15 } } } }, cutout: '55%' },
+      }, 260);
+      y = table(doc, y, {
+        head: [['Pessoa', 'Função', 'Reuniões realizadas', 'Meses do período']],
+        body: reun.map(r => [r.p.nome, r.p.funcao || 'Professor(a)', r.feitas, meses.length]),
+        styles: { fontSize: 7.8 }, columnStyles: { 2: { halign: 'center' }, 3: { halign: 'center' } },
+        didParseCell: d => { if (d.section === 'body' && d.column.index === 2 && +d.cell.raw < meses.length) d.cell.styles.textColor = [180, 30, 30]; },
+      });
+    }
+    y = section(doc, y, `6. Eventos e viagens no período: ${eventos.length}`);
+    if (eventos.length) {
+      y = table(doc, y, {
+        head: [['Data', 'Evento', 'Destino', 'Área', 'Alunos', 'Autorizações']],
+        body: eventos.map(e => { const p = participantesEvento(e.id); return [fmtDate(e.data_evento), e.nome, e.municipio || '', AREAS[e.area] || '', p.length, `${p.filter(x => isTrue(x.part.autorizacao)).length}/${p.length}`]; }),
+        styles: { fontSize: 7.8 }, columnStyles: { 4: { halign: 'center' }, 5: { halign: 'center' } },
+      });
+    } else y = paragraph(doc, y, 'Nenhum evento cadastrado no período.', { size: 9 });
+    signature(doc, y);
+    save(doc, `Relatorio_pedagogico_${tipo}_${P.nome}`);
+  }
+
   /** Ata de reunião no layout do modelo do Instituto. */
   async function relAta(r) {
     const AZUL = [26, 58, 92], ROTULO = [214, 228, 240], VALOR = [247, 249, 252], BORDA = [174, 205, 232];
@@ -663,7 +915,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */
