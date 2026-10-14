@@ -458,6 +458,86 @@ const PDF = (() => {
     save(doc, `Relatorio_pedagogico_${tipo}_${P.nome}`);
   }
 
+  /** Termo formal de ocorrência / advertência disciplinar. */
+  async function relOcorrencia(o) {
+    const TIT = { OCORRENCIA: 'Termo de Registro de Ocorrência', ADV_VERBAL: 'Termo de Advertência Verbal', ADV_ESCRITA: 'Termo de Advertência Escrita', SUSPENSAO: 'Termo de Suspensão Temporária de Atividades' };
+    const { doc } = await create(`${TIT[o.tipo] || TIT.OCORRENCIA} nº ${o.numero || ''}`, '');
+    const W = doc.internal.pageSize.getWidth();
+    const AZUL = [26, 58, 92], ROT = [214, 228, 240], VAL = [247, 249, 252], BORDA = [174, 205, 232];
+    let y = 54;
+    // quadro com pares rótulo/valor em 4 colunas; linha com 2 itens ocupa a largura toda
+    const quadro = (titulo, linhas) => {
+      y = ensure(doc, y + 2, 20);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...AZUL); doc.text(titulo, M, y); doc.setTextColor(0);
+      const rot = c => ({ content: c, styles: { fontStyle: 'bold', textColor: AZUL, fillColor: ROT } });
+      doc.autoTable({
+        startY: y + 2, margin: { left: M, right: M, top: 44, bottom: 24 }, theme: 'grid',
+        body: linhas.map(l => l.length === 2 ? [rot(l[0]), { content: l[1], colSpan: 3 }] : [rot(l[0]), l[1], rot(l[2]), l[3]]),
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: { top: 1.3, bottom: 1.3, left: 2.2, right: 2.2 }, lineColor: BORDA, lineWidth: 0.2, textColor: [30, 30, 30], fillColor: VAL },
+        columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 62 }, 2: { cellWidth: 30 } },
+      });
+      y = doc.lastAutoTable.finalY + 5;
+    };
+    const bloco = (titulo, texto) => {
+      y = ensure(doc, y + 2, 16);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...AZUL); doc.text(titulo, M, y); doc.setTextColor(0);
+      y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      String(texto || '—').split(/\n+/).filter(s => s.trim()).forEach(par => {
+        const ls = doc.splitTextToSize(par.trim(), W - 2 * M);
+        ls.forEach((l, i) => { y = ensure(doc, y, 6); doc.text(l, M, y, i < ls.length - 1 ? { align: 'justify', maxWidth: W - 2 * M } : {}); y += 4.6; });
+        y += 1.2;
+      });
+      y += 1.5;
+    };
+    const t = turma(o.turma_id) || {};
+    const GRAV = { LEVE: 'Leve', MEDIA: 'Média', GRAVE: 'Grave' };
+    quadro('1. IDENTIFICAÇÃO DO(A) ALUNO(A) E DO(A) RESPONSÁVEL', [
+      ['Aluno(a)', o.aluno_nome || ''],
+      ['Nascimento', fmtDate(o.data_nascimento) || '—', 'Área', AREAS[t.area] || '—'],
+      ['Turma', t.nome || '—', 'Professor(a)', t.professor || '—'],
+      ['Responsável legal', o.responsavel || '—', 'Telefone', o.telefone || '—'],
+    ]);
+    quadro('2. DADOS DA OCORRÊNCIA', [
+      ['Data', fmtDate(o.data_ocorrencia) || '—', 'Horário', o.hora || '—'],
+      ['Natureza', (TIT[o.tipo] || TIT.OCORRENCIA).replace('Termo de ', '').replace('Registro de ', ''), 'Gravidade', GRAV[o.gravidade] || '—'],
+      ['Local', o.local || '—'],
+      ['Presenciado por', [o.testemunha_nome, o.testemunha_funcao].filter(Boolean).join(' — ') || '—'],
+    ]);
+    bloco('3. RELATO DOS FATOS', o.descricao);
+    bloco('4. PROVIDÊNCIAS E MEDIDAS ADOTADAS', o.providencias);
+    bloco('5. TERMO DE CIÊNCIA', `O Instituto Três Pontões de Ação Social e Cultural – Instituto Cultural das Montanhas, no exercício de sua responsabilidade educativa, registra a ocorrência acima descrita envolvendo o(a) aluno(a) ${o.aluno_nome || ''}, com o objetivo de zelar pela segurança, pelo respeito mútuo e pela boa convivência entre alunos, educadores e colaboradores.\nO(A) responsável legal declara ter tomado ciência do inteiro teor deste termo e compromete-se a orientar o(a) aluno(a) quanto à conduta esperada nas atividades do Instituto, ciente de que a reincidência poderá acarretar a aplicação de medidas mais rigorosas, inclusive o desligamento do(a) aluno(a) da atividade.`);
+    // local e data
+    y = ensure(doc, y + 1, 40);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text(`Afonso Cláudio - ES, ${fmtDataExtenso(o.data_emissao || todayISO())}.`, W - M, y, { align: 'right' });
+    y += 2;
+    // assinaturas
+    const diego = (typeof assinaturas === 'function' ? assinaturas() : []).find(a => a.nome === 'Diego Padua Silva') || { nome: 'Diego Padua Silva' };
+    let img = null;
+    if (diego.imagem) { const im = new Image(); await new Promise(r => { im.onload = r; im.onerror = r; im.src = diego.imagem; }); if (im.naturalWidth) img = { url: diego.imagem, w: im.naturalWidth, h: im.naturalHeight }; }
+    const assinatura = (cx, yy, nome, linhas, imagem) => {
+      if (imagem) { let w = 44, h = w * imagem.h / imagem.w; if (h > 15) { h = 15; w = h * imagem.w / imagem.h; } doc.addImage(imagem.url, 'PNG', cx - w / 2, yy - h + 1, w, h); }
+      doc.setDrawColor(60); doc.line(cx - 25, yy, cx + 25, yy); doc.setDrawColor(0);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+      const ns = doc.splitTextToSize(nome || '', 52); doc.text(ns, cx, yy + 4, { align: 'center' });
+      let yl = yy + 4 + ns.length * 3.6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8);
+      linhas.filter(Boolean).forEach(l => { const ls = doc.splitTextToSize(l, 54); doc.text(ls, cx, yl, { align: 'center' }); yl += ls.length * 3.4; });
+    };
+    y = ensure(doc, y + 20, 26);
+    const col = (W - 2 * M) / 3;
+    assinatura(M + col / 2, y, 'Diego Padua Silva', ['Vice-Presidente', 'Instituto Cultural das Montanhas'], o.assinatura_digital === 'NAO' ? null : img);
+    assinatura(M + col * 1.5, y, o.testemunha_nome || ' ', ['Colaborador(a) que presenciou o fato', o.testemunha_funcao]);
+    assinatura(M + col * 2.5, y, o.responsavel || ' ', ['Responsável legal pelo(a) aluno(a)', 'Ciente em ____/____/______']);
+    y += 22;
+    y = ensure(doc, y, 8);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110);
+    doc.text('Documento emitido em 2 (duas) vias: uma para o arquivo do Instituto e outra para o(a) responsável legal.', W / 2, y, { align: 'center' });
+    doc.setTextColor(0);
+    save(doc, `Ocorrencia_${(o.numero || '').replace('/', '-')}_${o.aluno_nome || ''}`);
+  }
+
   /** Ata de reunião no layout do modelo do Instituto. */
   async function relAta(r) {
     const AZUL = [26, 58, 92], ROTULO = [214, 228, 240], VALOR = [247, 249, 252], BORDA = [174, 205, 232];
@@ -915,7 +995,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

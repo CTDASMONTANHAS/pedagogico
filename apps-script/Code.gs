@@ -34,6 +34,9 @@ const SCHEMA = {
   Assinaturas: ['id', 'nome', 'cargo', 'imagem', 'atualizado_em'],
   Reunioes: ['id', 'numero', 'status', 'professor', 'mes', 'data', 'hora_inicio', 'hora_fim', 'formato', 'local', 'projeto',
     'redator', 'assunto', 'relato', 'itens', 'encaminhamentos', 'participantes', 'assinantes', 'criado_em', 'atualizado_em'],
+  Ocorrencias: ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_nascimento', 'responsavel',
+    'telefone', 'data_ocorrencia', 'hora', 'local', 'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao',
+    'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em'],
 };
 
 /* ---------- Menu na planilha ---------- */
