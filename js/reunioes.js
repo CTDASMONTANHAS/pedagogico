@@ -15,6 +15,12 @@ const reuniaoObj = r => Object.assign({}, r, {
   participantes: jsonParse(r.participantes, []), itens: jsonParse(r.itens, []), assinantes: jsonParse(r.assinantes, []),
 });
 
+/** Outras pessoas da equipe com reunião mensal obrigatória (além dos professores). */
+const EQUIPE_REUNIAO = [
+  { nome: 'Juliete', funcao: 'Secretaria' },
+  { nome: 'Marcelo Ferreira Coutinho', funcao: 'Responsável pela van' },
+];
+
 /** Professores a partir das turmas ativas (nomes abreviados são unidos ao nome completo). */
 function professores() {
   const map = {};
@@ -27,7 +33,9 @@ function professores() {
     const maior = Object.keys(final).find(f => norm(f).startsWith(norm(n) + ' '));
     if (maior) final[maior] = [...new Set(final[maior].concat(map[n]))]; else final[n] = map[n];
   });
-  return Object.keys(final).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(nome => ({ nome, turmas: final[nome] }));
+  const lista = Object.keys(final).filter(n => !EQUIPE_REUNIAO.some(e => e.nome === n))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR')).map(nome => ({ nome, turmas: final[nome], funcao: 'Professor(a)' }));
+  return lista.concat(EQUIPE_REUNIAO.map(e => ({ nome: e.nome, turmas: [], funcao: e.funcao })));
 }
 const reunioesDo = (prof, mes) => DB.Reunioes.filter(r => r.professor === prof && r.mes === mes);
 
@@ -57,19 +65,19 @@ routes.reunioes = () => {
   view.innerHTML = `
     <div class="kpis">
       ${kpi('Referência', fmtMonth(mes))}
-      ${kpi('Professores', profs.length)}
+      ${kpi('Pessoas acompanhadas', profs.length, 'professores, secretaria e van')}
       ${kpi('Reuniões realizadas', `${feitas}/${profs.length}`, feitas === profs.length && profs.length ? 'todos em dia' : '', feitas === profs.length ? '' : 'k-amber')}
       ${kpi('Agendadas / em elaboração', agendadas)}
     </div>
     <section class="card">
-      <div class="card-head"><h3>Reuniões de ${fmtMonth(mes)}</h3><small class="muted">uma reunião por professor por mês · marque "Realizada" na ata para dar o check</small></div>
+      <div class="card-head"><h3>Reuniões de ${fmtMonth(mes)}</h3><small class="muted">uma reunião por pessoa por mês · marque "Realizada" na ata para dar o check</small></div>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Professor(a)</th><th>Turmas</th><th>Situação</th><th>Ata</th><th></th></tr></thead>
+        <thead><tr><th>Pessoa</th><th>Turmas / função</th><th>Situação</th><th>Ata</th><th></th></tr></thead>
         <tbody>${profs.map(p => {
           const rs = reunioesDo(p.nome, mes);
           const r = rs.find(x => x.status === 'REALIZADA') || rs[0];
           return `<tr><td><strong>${esc(p.nome)}</strong></td>
-            <td><small class="muted">${p.turmas.map(t => esc(shortName(t.nome))).join(' · ') || '—'}</small></td>
+            <td><small class="muted">${p.turmas.map(t => esc(shortName(t.nome))).join(' · ') || esc(p.funcao)}</small></td>
             <td>${r ? (r.status === 'REALIZADA' ? `<span class="tag ok">✓ realizada ${fmtDate(r.data)}</span>` : `<span class="tag warn">agendada ${fmtDate(r.data)}</span>`) : '<span class="flag amber">pendente</span>'}</td>
             <td>${r ? `<small>Ata ${esc(r.numero)}${r.assunto ? ' · ' + esc(r.assunto) : ''}</small>` : '—'}</td>
             <td class="row-actions">${r ? `<button class="btn ghost small" data-action="editarReuniao" data-id="${r.id}">Editar</button>
@@ -82,7 +90,7 @@ routes.reunioes = () => {
     </section>
     <section class="card">
       <h3>Controle de ${ano} <small class="muted">✓ realizada · ◷ agendada · — sem reunião</small></h3>
-      <div class="table-wrap"><table class="table hist"><thead><tr><th>Professor(a)</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMesReuniao" data-mes="${m}" class="${m === mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}</a></th>`).join('')}<th>Total</th></tr></thead>
+      <div class="table-wrap"><table class="table hist"><thead><tr><th>Pessoa</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMesReuniao" data-mes="${m}" class="${m === mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}</a></th>`).join('')}<th>Total</th></tr></thead>
       <tbody>${profs.map(p => `<tr><td>${esc(p.nome)}</td>${meses.map(m => `<td>${situacao(p.nome, m)}</td>`).join('')}
         <td><strong>${meses.filter(m => reunioesDo(p.nome, m).some(r => r.status === 'REALIZADA')).length}</strong></td></tr>`).join('')}</tbody></table></div>
     </section>`;
@@ -112,18 +120,24 @@ function abrirAta(r) {
     const out = [];
     if (r.professor) {
       const p = profs.find(x => x.nome === r.professor);
-      out.push({ nome: r.professor, funcao: 'Professor(a)' + (p && p.turmas.length ? ' — ' + p.turmas.map(t => shortName(t.nome)).join(', ') : ''), instituicao: 'Instituto Cultural das Montanhas', assina: true });
+      out.push({ nome: r.professor, funcao: (p ? p.funcao : 'Professor(a)') + (p && p.turmas.length ? ' — ' + p.turmas.map(t => shortName(t.nome)).join(', ') : ''), instituicao: 'Instituto Cultural das Montanhas', assina: true });
     }
     assin.filter(a => a.nome).slice(0, 1).forEach(a => out.push({ nome: a.nome, funcao: a.cargo || 'Coordenação Pedagógica', instituicao: 'Instituto Cultural das Montanhas', assina: true }));
     return out;
   };
   const parts = r.participantes && r.participantes.length ? r.participantes : padraoPart();
-  const itens = r.itens && r.itens.length ? r.itens : [{ titulo: 'Plano de aula mensal', texto: '' }, { titulo: 'Relatórios de aula e registro de chamada', texto: '' }, { titulo: 'Frequência e alunos faltosos', texto: '' }];
+  const quem = profs.find(x => x.nome === r.professor);
+  const sugestao = !quem || quem.funcao === 'Professor(a)'
+    ? [{ titulo: 'Plano de aula mensal', texto: '' }, { titulo: 'Relatórios de aula e registro de chamada', texto: '' }, { titulo: 'Frequência e alunos faltosos', texto: '' }]
+    : quem.funcao === 'Secretaria'
+      ? [{ titulo: 'Contato com alunos faltosos e famílias', texto: '' }, { titulo: 'Matrículas, desligamentos e documentação', texto: '' }, { titulo: 'Autorizações e documentos para eventos', texto: '' }]
+      : [{ titulo: 'Rotas e horários do transporte', texto: '' }, { titulo: 'Viagens e eventos do mês', texto: '' }, { titulo: 'Manutenção, segurança e ocorrências', texto: '' }];
+  const itens = r.itens && r.itens.length ? r.itens : sugestao;
   openModal(r.id ? `Editar ata ${r.numero}` : 'Nova ata de reunião', `<form id="ataForm" class="ata-form">
     <div class="form-grid">
       <label class="field">Nº da ata<input name="numero" value="${esc(r.numero)}" required></label>
       <label class="field">Situação<select name="status"><option value="AGENDADA" ${r.status !== 'REALIZADA' ? 'selected' : ''}>Agendada / em elaboração</option><option value="REALIZADA" ${r.status === 'REALIZADA' ? 'selected' : ''}>Realizada ✓</option></select></label>
-      <label class="field">Professor(a)<select name="professor"><option value="">— Reunião geral —</option>${profs.map(p => `<option ${p.nome === r.professor ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</select></label>
+      <label class="field">Reunião com<select name="professor"><option value="">— Reunião geral —</option>${profs.map(p => `<option value="${esc(p.nome)}" ${p.nome === r.professor ? 'selected' : ''}>${esc(p.nome)}${p.funcao !== 'Professor(a)' ? ' (' + esc(p.funcao) + ')' : ''}</option>`).join('')}</select></label>
       <label class="field">Data<input type="date" name="data" value="${esc(r.data || todayISO())}" required></label>
       <label class="field">Início<input type="time" name="hora_inicio" value="${esc(r.hora_inicio || '')}"></label>
       <label class="field">Término<input type="time" name="hora_fim" value="${esc(r.hora_fim || '')}"></label>
@@ -131,7 +145,7 @@ function abrirAta(r) {
       <label class="field">Local<input name="local" value="${esc(r.local || '')}" placeholder="Ex.: Sede do Instituto"></label>
       <label class="field">Projeto<input name="projeto" value="${esc(r.projeto || '')}" placeholder="Ex.: 2026 - Orquestra Jônice Tristão"></label>
       <label class="field">Redator(a)<input name="redator" value="${esc(r.redator || (assin[0] && assin[0].nome) || '')}"></label>
-      <label class="field full">Assunto da reunião<input name="assunto" value="${esc(r.assunto || 'Reunião pedagógica mensal')}"></label>
+      <label class="field full">Assunto da reunião<input name="assunto" value="${esc(r.assunto || (quem && quem.funcao === 'Secretaria' ? 'Reunião mensal com a secretaria' : quem && quem.funcao === 'Responsável pela van' ? 'Reunião mensal sobre o transporte (van)' : 'Reunião pedagógica mensal'))}"></label>
     </div>
     <h4>Participantes <small class="muted">(marque quem assina a ata)</small></h4>
     <div id="ataParts">${parts.map(linhaParticipante).join('')}</div>
