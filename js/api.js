@@ -1,5 +1,5 @@
 /* Comunicação com o Apps Script (planilha) — ou armazenamento local no modo demonstração. */
-const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes', 'Assinaturas', 'Reunioes', 'Ocorrencias', 'Fotos'];
+const SHEETS = ['Turmas', 'Alunos', 'Conferencias', 'Frequencia', 'Contatos', 'Eventos', 'EventoParticipantes', 'Assinaturas', 'Reunioes', 'Ocorrencias', 'Fotos', 'Visitas'];
 
 const API = {
   get demo() { return !window.APP_CONFIG.API_URL; },
@@ -30,7 +30,7 @@ const API = {
   saveMany(sheet, records) { return this.call({ action: 'saveMany', sheet, records }); },
   remove(sheet, id) { return this.call({ action: 'remove', sheet, id }); },
   removeMany(sheet, ids) { return this.call({ action: 'removeMany', sheet, ids }); },
-  saveFoto(foto, dados) { return this.call({ action: 'saveFoto', foto, dados }); },
+  saveFoto(foto, imagem) { return this.call({ action: 'saveFoto', foto, dados: imagem }); },
   removeFoto(id) { return this.call({ action: 'removeFoto', id }); },
   getFotos(ids) { return this.call({ action: 'getFotos', ids }); },
   replaceFrequencia(turma_id, datas, registros) { return this.call({ action: 'replaceFrequencia', turma_id, datas, registros }); },
@@ -63,7 +63,7 @@ const Demo = {
     switch (p.action) {
       case 'ping': out = true; break;
       case 'getAll': out = clone(Object.assign({}, db, { FotosDados: undefined })); break;
-      case 'saveFoto': p.dados.id = p.foto.id = p.foto.id || uid(); upsert('FotosDados', p.dados); out = upsert('Fotos', p.foto); break;
+      case 'saveFoto': p.foto.id = p.foto.id || uid(); upsert('FotosDados', { id: p.foto.id, p1: p.dados }); out = upsert('Fotos', p.foto); break;
       case 'removeFoto': db.Fotos = db.Fotos.filter(r => r.id !== p.id); db.FotosDados = db.FotosDados.filter(r => r.id !== p.id); break;
       case 'getFotos': out = db.FotosDados.filter(r => p.ids.includes(r.id)).map(r => ({ id: r.id, imagem: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(k => r[k] || '').join('') })); break;
       case 'save': out = upsert(p.sheet, p.record); break;

@@ -266,3 +266,20 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .foto-full img { max-width: 100%; max-height: 75vh; display: block; margin: 0 auto; border-radius: 8px; }
 .ata-ind { background: var(--brand-soft); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 13px; line-height: 1.5; }
 .report select[multiple] { min-height: 96px; }
+
+/* visitas às aulas */
+.vis-asp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; }
+.vis-asp label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.vis-asp select { flex: 0 0 140px; }
+.vf-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-bottom: 8px; }
+.vf-row img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; cursor: zoom-in; background: var(--brand-soft); }
+.vf-add { display: inline-flex; cursor: pointer; }
+.foto-mini { display: flex; gap: 4px; align-items: center; }
+.foto-mini img { width: 34px; height: 26px; object-fit: cover; border-radius: 4px; cursor: zoom-in; }
+.foto-mini span { font-size: 11px; color: var(--muted); }
+.chips-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.foto-zoom { position: fixed; inset: 0; background: rgba(0,0,0,.82); z-index: 80; display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.foto-zoom figure { margin: 0; max-width: 100%; text-align: center; }
+.foto-zoom img { max-width: 100%; max-height: 82vh; border-radius: 8px; }
+.foto-zoom figcaption { color: #fff; margin-top: 8px; font-size: 14px; }
+@media (max-width: 700px) { .vis-asp { grid-template-columns: 1fr; } }

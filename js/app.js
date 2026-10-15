@@ -751,7 +751,7 @@ routes.relatorios = () => {
     <form class="card report" data-report="avaliacao"><h3>Avaliação dos professores</h3><p class="muted small">Nota por professor: conferência, frequência das turmas, evasão e reuniões. Detalhes em <a href="#avaliacao">Avaliação dos professores</a>.</p>
       <label>Período<select name="tipo"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option></select></label>
       <label>Mês de referência<input type="month" name="ref" value="${thisMonth()}" class="input"></label><button class="btn primary">Gerar PDF</button></form>
-    <form class="card report" data-report="fotografico"><h3>Relatório fotográfico / de visitas</h3><p class="muted small">Fotos com data e legenda, duas por linha, com relato opcional. Cadastre as fotos em <a href="#fotos">Fotos e evidências</a>.</p>
+    <form class="card report" data-report="fotografico"><h3>Relatório fotográfico</h3><p class="muted small">Junta as fotos de várias visitas (por turma ou período), com data e legenda. O relatório de cada visita sai em <a href="#visitas">Visitas às aulas</a>.</p>
       <label>Tipo<select name="tipo"><option value="">Todas</option>${Object.entries(TIPOS_FOTO).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
       <label>Turma<select name="turma"><option value="">Todas</option>${turmaOptions('')}</select></label>
       <label>Evento<select name="evento"><option value="">—</option>${evOpts}</select></label>

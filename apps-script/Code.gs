@@ -38,11 +38,16 @@ const SCHEMA = {
   Ocorrencias: ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_nascimento', 'responsavel',
     'telefone', 'data_ocorrencia', 'hora', 'local', 'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao',
     'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em'],
-  Fotos: ['id', 'tipo', 'turma_id', 'evento_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'partes', 'criado_em'],
+  Fotos: ['id', 'tipo', 'turma_id', 'evento_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'partes', 'criado_em',
+    'visita_id', 'drive_id', 'ordem'],
+  Visitas: ['id', 'numero', 'status', 'data', 'hora', 'turma_id', 'professor', 'observador', 'observador_cargo', 'alunos_presentes',
+    'aspectos', 'relato', 'pontos_positivos', 'pontos_melhorar', 'encaminhamentos', 'criado_em', 'atualizado_em'],
   // imagem em tamanho de relatório, dividida em partes (limite de 50 mil caracteres por célula); não vai no getAll
   FotosDados: ['id', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'],
 };
 const LAZY_ = { FotosDados: true };
+// Pasta do Google Drive do pedagógico onde ficam as fotos (uma subpasta por mês)
+const PASTA_FOTOS = '1eFKhRiSeZ9_Hrf_pFixBTqLAPYwFOEt5';
 
 /* ---------- Menu na planilha ---------- */
 
@@ -165,7 +170,7 @@ function handle_(req) {
         case 'remove': removeMany_(req.sheet, [req.id]); return json_({ ok: true });
         case 'removeMany': removeMany_(req.sheet, req.ids || []); return json_({ ok: true });
         case 'saveFoto': return json_({ ok: true, data: saveFoto_(req.foto, req.dados) });
-        case 'removeFoto': removeMany_('FotosDados', [req.id]); removeMany_('Fotos', [req.id]); return json_({ ok: true });
+        case 'removeFoto': removeFoto_(req.id); return json_({ ok: true });
         case 'getFotos': return json_({ ok: true, data: getFotos_(req.ids || []) });
         case 'replaceFrequencia': return json_({ ok: true, data: replaceFrequencia_(req.turma_id, req.datas || [], req.registros || []) });
         default: return json_({ ok: false, error: 'Ação desconhecida: ' + req.action });
@@ -298,33 +303,65 @@ function replaceFrequencia_(turmaId, datas, registros) {
 
 /* ---------- Fotos (comprovação) ---------- */
 
-/** Grava os dados da imagem (anexa uma linha, sem ler a aba inteira) e os metadados da foto. */
-function saveFoto_(foto, dados) {
-  if (!foto || !dados) throw new Error('Foto inválida');
+function subpasta_(mes) {
+  const raiz = DriveApp.getFolderById(PASTA_FOTOS);
+  const nome = mes || 'Sem data';
+  const it = raiz.getFoldersByName(nome);
+  return it.hasNext() ? it.next() : raiz.createFolder(nome);
+}
+
+/** Salva a imagem no Google Drive (pasta do pedagógico) e os dados da foto na planilha. */
+function saveFoto_(foto, imagem) {
+  if (!foto || !imagem) throw new Error('Foto inválida');
   if (!foto.id) foto.id = Utilities.getUuid().slice(0, 12);
-  const sh = sheet_('FotosDados');
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
-  dados.id = foto.id;
-  sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setNumberFormat('@')
-    .setValues([headers.map(function (h) { return dados[h] === undefined ? '' : String(dados[h]); })]);
+  const m = String(imagem).match(/^data:([^;]+);base64,(.*)$/);
+  if (!m) throw new Error('Imagem inválida');
+  const nome = [foto.data || '', foto.legenda || 'foto', foto.id].join(' - ').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 120) + '.jpg';
+  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], nome);
+  const file = subpasta_(foto.mes || String(foto.data || '').slice(0, 7)).createFile(blob);
+  if (foto.legenda) file.setDescription(foto.legenda);
+  foto.drive_id = file.getId();
   return saveMany_('Fotos', [foto])[0];
 }
 
-/** Devolve as imagens completas (partes unidas) das fotos pedidas. */
+/** Devolve as imagens completas (dataURL) das fotos pedidas, lidas do Drive. */
 function getFotos_(ids) {
-  const sh = sheet_('FotosDados');
-  const last = sh.getLastRow();
-  if (last < 2 || !ids.length) return [];
-  const lc = sh.getLastColumn();
-  const col = sh.getRange(2, 1, last - 1, 1).getValues();
-  const want = {};
-  ids.forEach(function (id) { want[String(id)] = true; });
+  const fotos = read_('Fotos');
   const out = [];
-  for (let i = 0; i < col.length; i++) {
-    const id = String(col[i][0]);
-    if (!want[id]) continue;
-    const row = sh.getRange(i + 2, 1, 1, lc).getValues()[0];
-    out.push({ id: id, imagem: row.slice(1).map(cell_).join('') });
-  }
+  ids.forEach(function (id) {
+    const f = fotos.filter(function (x) { return x.id === String(id); })[0];
+    if (!f) return;
+    if (f.drive_id) {
+      try {
+        const b = DriveApp.getFileById(f.drive_id).getBlob();
+        out.push({ id: f.id, imagem: 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()) });
+      } catch (e) { /* arquivo removido do Drive */ }
+      return;
+    }
+    // fotos antigas guardadas na própria planilha
+    const sh = sheet_('FotosDados');
+    const last = sh.getLastRow();
+    if (last < 2) return;
+    const col = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (let i = 0; i < col.length; i++) {
+      if (String(col[i][0]) !== f.id) continue;
+      const row = sh.getRange(i + 2, 1, 1, sh.getLastColumn()).getValues()[0];
+      out.push({ id: f.id, imagem: row.slice(1).map(cell_).join('') });
+      break;
+    }
+  });
   return out;
+}
+
+/** Remove a foto da planilha e manda o arquivo para a lixeira do Drive. */
+function removeFoto_(id) {
+  const f = read_('Fotos').filter(function (x) { return x.id === String(id); })[0];
+  if (f && f.drive_id) { try { DriveApp.getFileById(f.drive_id).setTrashed(true); } catch (e) { /* já removido */ } }
+  removeMany_('FotosDados', [id]);
+  removeMany_('Fotos', [id]);
+}
+
+/** Executar uma vez no editor para autorizar o acesso ao Google Drive. */
+function autorizarDrive() {
+  Logger.log('Pasta de fotos: ' + DriveApp.getFolderById(PASTA_FOTOS).getName());
 }

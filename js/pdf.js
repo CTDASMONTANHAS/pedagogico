@@ -460,7 +460,7 @@ const PDF = (() => {
   }
 
   /* ---------- Registro fotográfico (usado por vários relatórios) ---------- */
-  async function registroFotos(doc, y, lista, titulo, max) {
+  async function registroFotos(doc, y, lista, titulo, max, legFn) {
     if (!lista.length) return y;
     const sel = max ? lista.slice(0, max) : lista;
     let imgs = {};
@@ -474,7 +474,7 @@ const PDF = (() => {
       const iw = +f.largura || 4, ih = +f.altura || 3;
       let w = cw, h = cw * ih / iw;
       if (h > hmax) { h = hmax; w = h * iw / ih; }
-      const leg = doc.setFont('helvetica', 'normal').setFontSize(7.5).splitTextToSize(legendaFoto(f), cw);
+      const leg = doc.setFont('helvetica', 'normal').setFontSize(7.5).splitTextToSize((legFn || legendaFoto)(f) || ' ', cw);
       const bloco = hmax + 3 + leg.length * 3.3 + 4;
       if (col === 0) { const ny = ensure(doc, y, bloco); y = ny; linhaH = 0; }
       const x0 = M + col * (cw + gap);
@@ -665,6 +665,75 @@ const PDF = (() => {
     y = lista.length ? await registroFotos(doc, y, lista, `Registro fotográfico — ${lista.length} foto(s)`) : paragraph(doc, y, 'Nenhuma foto encontrada com esses filtros.', { size: 9.5 });
     signature(doc, y);
     save(doc, `${titulo.replace(/ /g, '_')}_${e ? e.nome : t ? t.nome : ''}_${todayISO()}`);
+  }
+
+  /* ---------- Relatório de visita à aula ---------- */
+  async function relVisita(v) {
+    const t = turma(v.turma_id) || {};
+    const { doc, y: y0 } = await create(`Relatório de Visita à Aula nº ${v.numero || ''}`, [t.nome || '', `${fmtDataExtenso(v.data)}${v.hora ? ', às ' + v.hora : ''}`]);
+    const W = doc.internal.pageSize.getWidth();
+    const AZUL = [26, 58, 92], ROT = [214, 228, 240], VAL = [247, 249, 252], BORDA = [174, 205, 232];
+    let y = y0;
+    const titulo = txt => { y = ensure(doc, y + 2, 16); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...AZUL); doc.text(txt, M, y); doc.setTextColor(0); y += 2; };
+    const texto = (txt) => {
+      y += 3;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      String(txt || '—').split(/\n+/).filter(s => s.trim()).forEach(par => {
+        const ls = doc.splitTextToSize(par.trim(), W - 2 * M);
+        ls.forEach((l, i) => { y = ensure(doc, y, 6); doc.text(l, M, y, i < ls.length - 1 ? { align: 'justify', maxWidth: W - 2 * M } : {}); y += 4.6; });
+        y += 1.2;
+      });
+      y += 2;
+    };
+    const rot = c => ({ content: c, styles: { fontStyle: 'bold', textColor: AZUL, fillColor: ROT } });
+    titulo('1. IDENTIFICAÇÃO');
+    doc.autoTable({
+      startY: y + 1, margin: { left: M, right: M, top: 44, bottom: 24 }, theme: 'grid',
+      body: [
+        [rot('Turma'), { content: t.nome || '—', colSpan: 3 }],
+        [rot('Área'), AREAS[t.area] || '—', rot('Data / horário'), `${fmtDate(v.data)}${v.hora ? ' — ' + v.hora : ''}`],
+        [rot('Professor(a)'), v.professor || t.professor || '—', rot('Alunos presentes'), v.alunos_presentes ? `${v.alunos_presentes} de ${alunosDaTurma(t.id).length} matriculados` : '—'],
+        [rot('Observador(a)'), { content: [v.observador, v.observador_cargo].filter(Boolean).join(' — ') || '—', colSpan: 3 }],
+      ],
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: { top: 1.3, bottom: 1.3, left: 2.2, right: 2.2 }, lineColor: BORDA, lineWidth: 0.2, textColor: [30, 30, 30], fillColor: VAL },
+      columnStyles: { 0: { cellWidth: 32 }, 1: { cellWidth: 52 }, 2: { cellWidth: 32 } },
+    });
+    y = doc.lastAutoTable.finalY + 5;
+    const asp = jsonParse(v.aspectos, {});
+    const COR_N = { OTIMO: [20, 110, 50], BOM: [42, 143, 87], REGULAR: [170, 110, 0], INSUF: [180, 30, 30], NA: [130, 130, 130] };
+    titulo('2. ASPECTOS OBSERVADOS');
+    doc.autoTable({
+      startY: y + 1, margin: { left: M, right: M, top: 44, bottom: 24 }, theme: 'grid',
+      head: [['Aspecto', 'Avaliação']],
+      body: ASPECTOS_VISITA.map(([k, l]) => [l, NOTAS_VISITA[asp[k] || 'NA']]),
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 1.5, lineColor: BORDA, lineWidth: 0.2 },
+      headStyles: { fillColor: AZUL, textColor: 255, fontStyle: 'bold' },
+      columnStyles: { 1: { cellWidth: 36, halign: 'center', fontStyle: 'bold' } },
+      didParseCell: d => { if (d.section === 'body' && d.column.index === 1) d.cell.styles.textColor = COR_N[asp[ASPECTOS_VISITA[d.row.index][0]] || 'NA']; },
+    });
+    y = doc.lastAutoTable.finalY + 5;
+    titulo('3. RELATO DA VISITA'); texto(v.relato);
+    titulo('4. PONTOS POSITIVOS'); texto(v.pontos_positivos);
+    titulo('5. PONTOS A MELHORAR'); texto(v.pontos_melhorar);
+    titulo('6. ENCAMINHAMENTOS'); texto(v.encaminhamentos);
+    const fotos = fotosFiltro({ visita: v.id });
+    if (fotos.length) y = await registroFotos(doc, y + 2, fotos, '7. FOTOS E EVIDÊNCIAS', 0, f => f.legenda);
+    // assinaturas: observador(a) e professor(a)
+    y = ensure(doc, y + 4, 48);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text(`Afonso Cláudio - ES, ${fmtDataExtenso(v.data)}.`, W - M, y, { align: 'right' });
+    y += 24;
+    const col = (W - 2 * M) / 2;
+    const ass = (cx, nome, cargo, img) => {
+      if (img && img.imagem && img.w) { let w = 50, h = w * img.h / img.w; if (h > 16) { h = 16; w = h * img.w / img.h; } doc.addImage(img.imagem, 'PNG', cx - w / 2, y - h + 1, w, h); }
+      doc.setDrawColor(60); doc.line(cx - 35, y, cx + 35, y); doc.setDrawColor(0);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(nome || ' ', cx, y + 4.5, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(cargo || '', cx, y + 8.5, { align: 'center' });
+    };
+    const imgObs = assinante && assinante.nome === v.observador ? assinante : null;
+    ass(M + col / 2, v.observador, v.observador_cargo || 'Observador(a)', imgObs);
+    ass(M + col * 1.5, v.professor || t.professor, 'Professor(a) da turma');
+    save(doc, `Visita_${(v.numero || '').replace('/', '-')}_${t.nome || ''}`);
   }
 
   /** Termo formal de ocorrência / advertência disciplinar. */
@@ -1206,7 +1275,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, avaliacao: relAvaliacao, prestacao: relPrestacao, fotografico: relFotografico, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, avaliacao: relAvaliacao, prestacao: relPrestacao, fotografico: relFotografico, visita: relVisita, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */
