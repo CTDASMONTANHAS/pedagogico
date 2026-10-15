@@ -48,6 +48,7 @@ function proximoNumero(ano) {
 ui.mesReuniao = ui.mesReuniao || thisMonth();
 routes.reunioes = () => {
   setHeader('Reuniões com professores', `<input type="month" class="input" value="${ui.mesReuniao}" data-change="setMesReuniao">
+    <button class="btn ghost" data-action="enviarDrive">Enviar pro Drive</button>
     <button class="btn primary" data-action="novaReuniao">+ Nova ata</button>`);
   const mes = ui.mesReuniao, ano = mes.slice(0, 4);
   const profs = professores();

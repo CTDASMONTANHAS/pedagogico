@@ -24,6 +24,7 @@ const visitasDe = (tid, mes) => DB.Visitas.filter(v => v.turma_id === tid && (v.
 
 routes.visitas = () => {
   setHeader('Visitas às aulas', `<input type="month" class="input" value="${ui.mesVisita}" data-change="setMesVisita">
+    <button class="btn ghost" data-action="enviarDrive">Enviar pro Drive</button>
     <button class="btn primary" data-action="novaVisita">+ Nova visita</button>`);
   const mes = ui.mesVisita, ano = mes.slice(0, 4);
   const ts = turmasConferencia(ui.areaVisita, mes);

@@ -178,7 +178,7 @@ function handle_(req) {
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
-    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto', 'syncOcorrencia', 'removerOcorrencia'];
+    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto', 'syncOcorrencia', 'removerOcorrencia', 'enviarDrive'];
     if (writes.indexOf(req.action) !== -1) lock.waitLock(20000);
     try {
       switch (req.action) {
@@ -197,6 +197,7 @@ function handle_(req) {
           props.setProperty('DIRETORIA_KEY', nova);
           return json_({ ok: true });
         }
+        case 'enviarDrive': return json_({ ok: true, data: enviarDrive_(req.destino, req.subpasta, req.nome, req.pdf) });
         case 'syncOcorrencia': return json_({ ok: true, data: syncOcorrencia_(req.ocorrencia, req.pdf) });
         case 'removerOcorrencia': removerOcorrencia_(req.id); return json_({ ok: true });
         case 'statusDiretoria': return json_({ ok: true, data: !!props.getProperty('DIRETORIA_KEY') });
@@ -492,11 +493,8 @@ function linhaOcorrencia_(sh, cab, numero) {
   return { linha: livre, existe: false };
 }
 
-function pastaTermos_() {
-  let base;
-  try { const ps = DriveApp.getFileById(PLANILHA_OCORRENCIAS).getParents(); base = ps.hasNext() ? ps.next() : DriveApp.getRootFolder(); } catch (e) { base = DriveApp.getRootFolder(); }
-  const it = base.getFoldersByName('Termos de Ocorrência');
-  return it.hasNext() ? it.next() : base.createFolder('Termos de Ocorrência');
+function pastaTermos_(mes) {
+  return subpastaDe_(pastaDestino_('ocorrencias'), mes || 'Sem data');
 }
 
 /** Grava o termo em PDF no Drive e preenche/atualiza a linha da planilha de controle. */
@@ -509,7 +507,7 @@ function syncOcorrencia_(o, pdf) {
     const bytes = Utilities.base64Decode(m ? m[1] : pdf);
     const nome = ('Termo ' + (o.numero || '').replace('/', '-') + ' - ' + (o.aluno_nome || '') + '.pdf').replace(/[\\/:*?"<>|]+/g, ' ');
     if (termoId) { try { DriveApp.getFileById(termoId).setTrashed(true); } catch (e) { /* já removido */ } }
-    const f = pastaTermos_().createFile(Utilities.newBlob(bytes, 'application/pdf', nome));
+    const f = pastaTermos_(String(o.data_ocorrencia || '').slice(0, 7)).createFile(Utilities.newBlob(bytes, 'application/pdf', nome));
     termoId = f.getId(); link = f.getUrl();
   }
   const a = abaOcorrencias_();
@@ -533,4 +531,43 @@ function removerOcorrencia_(id) {
     const pos = linhaOcorrencia_(a.sh, a.cab, o.numero);
     if (pos.existe) a.sh.deleteRow(pos.linha);
   } catch (e) { /* planilha indisponível: segue com a exclusão no sistema */ }
+}
+
+/* ---------- Enviar relatórios para as pastas do PEDAGOGICO-2026 ---------- */
+// Palavra-chave do nome de cada pasta dentro do PEDAGOGICO-2026 (a pasta-mãe de FOTOS DOS RELATÓRIOS)
+const PASTAS_DESTINO_ = { conferencia: ['CONFERENCIA', 'CONFERÊNCIA MENSAL E ANUAL'], reunioes: ['REUNIO', 'REUNIÕES PEDAGÓGICAS'],
+  visitas: ['VISITA', 'VISITAS PEDAGÓGICAS'], ocorrencias: ['OCORRENC', 'OCORRÊNCIAS-ADVERTÊNCIAS'] };
+const semAcento_ = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+function pastaPedagogico_() {
+  const ps = DriveApp.getFolderById(PASTA_FOTOS).getParents();
+  if (!ps.hasNext()) throw new Error('Pasta PEDAGOGICO-2026 não encontrada.');
+  return ps.next();
+}
+
+function pastaDestino_(destino) {
+  const d = PASTAS_DESTINO_[destino];
+  if (!d) throw new Error('Destino inválido: ' + destino);
+  const base = pastaPedagogico_();
+  const it = base.getFolders();
+  while (it.hasNext()) { const p = it.next(); if (semAcento_(p.getName()).indexOf(d[0]) !== -1) return p; }
+  return base.createFolder(d[1]);
+}
+
+function subpastaDe_(pasta, nome) {
+  if (!nome) return pasta;
+  const it = pasta.getFoldersByName(nome);
+  return it.hasNext() ? it.next() : pasta.createFolder(nome);
+}
+
+/** Grava o PDF na pasta de destino (subpasta do mês/ano); substitui o arquivo de mesmo nome. */
+function enviarDrive_(destino, subpasta, nome, pdf) {
+  const m = String(pdf || '').match(/base64,(.*)$/);
+  if (!m) throw new Error('PDF inválido');
+  const pasta = subpastaDe_(pastaDestino_(destino), subpasta);
+  const arquivo = String(nome || 'Relatório').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 150) + '.pdf';
+  const antigos = pasta.getFilesByName(arquivo);
+  while (antigos.hasNext()) antigos.next().setTrashed(true);
+  const f = pasta.createFile(Utilities.newBlob(Utilities.base64Decode(m[1]), 'application/pdf', arquivo));
+  return { url: f.getUrl(), pasta: pasta.getName() };
 }

@@ -43,7 +43,7 @@ const PDF = (() => {
 
   async function create(title, subtitle, orientation) {
     await loadLogo();
-    const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: orientation || 'portrait' });
+    const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: orientation || 'portrait', compress: true });
     const W = doc.internal.pageSize.getWidth();
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(0);
     doc.text(title.toUpperCase(), W / 2, 46, { align: 'center' });
@@ -141,8 +141,15 @@ const PDF = (() => {
     return url;
   }
 
+  let captura = null; // quando ativo, os PDFs são guardados em memória (para enviar ao Drive) em vez de baixados
+  async function capturar(fn) {
+    captura = [];
+    try { await fn(); return captura; } finally { captura = null; }
+  }
+
   function save(doc, filename) {
     drawLetterhead(doc);
+    if (captura) { captura.push({ nome: filename, pdf: doc.output('datauristring') }); return; }
     doc.save(filename.replace(/[^\w\-áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ ]+/g, '').replace(/\s+/g, '_') + '.pdf');
   }
 
@@ -1276,7 +1283,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, avaliacao: relAvaliacao, prestacao: relPrestacao, fotografico: relFotografico, visita: relVisita, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { capturar, setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, avaliacao: relAvaliacao, prestacao: relPrestacao, fotografico: relFotografico, visita: relVisita, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

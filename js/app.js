@@ -336,7 +336,8 @@ actions.fichaAluno = el => {
 routes.conferencia = () => {
   setHeader('Conferência mensal dos professores', `<input type="month" class="input" value="${ui.mes}" data-change="setMes">
     <button class="btn ghost" data-action="pdfConferenciaAnual">PDF anual</button>
-    <button class="btn primary" data-action="pdfConferencia">PDF do mês</button>`);
+    <button class="btn primary" data-action="pdfConferencia">PDF do mês</button>
+    <button class="btn ghost" data-action="enviarDrive">Enviar pro Drive</button>`);
   const ts = turmasConferencia(ui.areaConf, ui.mes);
   const naoIniciadas = turmasAtivas(ui.areaConf).filter(t => !iniciou(t, ui.mes));
   const r = resumoConferencia(ui.mes, ui.areaConf);
@@ -723,7 +724,7 @@ actions.pdfAutorizacoes = el => run(() => PDF.autorizacoes(el.dataset.id, false)
 
 /* ================= RELATÓRIOS ================= */
 routes.relatorios = () => {
-  setHeader('Relatórios em PDF');
+  setHeader('Relatórios em PDF', `<button class="btn primary" data-action="enviarDrive">Enviar pro Drive</button>`);
   const areaSel = n => `<select name="${n}"><option value="">Música e Esporte</option>${Object.entries(AREAS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>`;
   const evOpts = DB.Eventos.slice().sort((a, b) => b.data_evento.localeCompare(a.data_evento)).map(e => `<option value="${e.id}">${fmtDate(e.data_evento)} — ${esc(e.nome)}</option>`).join('');
   view.innerHTML = `<p class="muted">Todos os relatórios saem na folha timbrada do Instituto (logo, cabeçalho e rodapé com endereço), Ao gerar, você escolhe quem assina — cadastre as assinaturas em <a href="#assinaturas">Assinaturas</a>.</p>
