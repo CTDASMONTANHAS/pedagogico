@@ -156,6 +156,13 @@ function handle_(req) {
       }
       return json_({ ok: false, error: 'Primeiro acesso: crie a senha do sistema.', semSenha: true });
     }
+    // Painel da diretoria: senha própria, somente leitura
+    if (req.action === 'diretoria') {
+      const dk = props.getProperty('DIRETORIA_KEY');
+      if (!dk) return json_({ ok: false, error: 'O acesso da diretoria ainda não foi liberado pela coordenação.' });
+      if (req.key !== dk) return json_({ ok: false, error: 'Senha inválida', auth: false });
+      return json_({ ok: true, data: dadosDiretoria_() });
+    }
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
@@ -171,6 +178,14 @@ function handle_(req) {
         case 'removeMany': removeMany_(req.sheet, req.ids || []); return json_({ ok: true });
         case 'saveFoto': return json_({ ok: true, data: saveFoto_(req.foto, req.dados) });
         case 'removeFoto': removeFoto_(req.id); return json_({ ok: true });
+        case 'definirSenhaDiretoria': {
+          const nova = String(req.nova || '');
+          if (nova.length < 6) throw new Error('A senha da diretoria precisa ter pelo menos 6 caracteres.');
+          if (nova === key) throw new Error('Use uma senha diferente da senha da coordenação.');
+          props.setProperty('DIRETORIA_KEY', nova);
+          return json_({ ok: true });
+        }
+        case 'statusDiretoria': return json_({ ok: true, data: !!props.getProperty('DIRETORIA_KEY') });
         case 'getFotos': return json_({ ok: true, data: getFotos_(req.ids || []) });
         case 'replaceFrequencia': return json_({ ok: true, data: replaceFrequencia_(req.turma_id, req.datas || [], req.registros || []) });
         default: return json_({ ok: false, error: 'Ação desconhecida: ' + req.action });
@@ -364,4 +379,20 @@ function removeFoto_(id) {
 /** Executar uma vez no editor para autorizar o acesso ao Google Drive. */
 function autorizarDrive() {
   Logger.log('Pasta de fotos: ' + DriveApp.getFolderById(PASTA_FOTOS).getName());
+}
+
+/* ---------- Painel da diretoria (somente leitura, dados mínimos) ---------- */
+function dadosDiretoria_() {
+  const so = function (lista, campos) {
+    return lista.map(function (r) { const o = {}; campos.forEach(function (c) { o[c] = r[c] === undefined ? '' : r[c]; }); return o; });
+  };
+  return {
+    Turmas: so(read_('Turmas'), ['id', 'area', 'nome', 'professor', 'ativa', 'inicio']),
+    Alunos: so(read_('Alunos'), ['id', 'turma_id', 'nome', 'ativo', 'data_desligamento']),
+    Conferencias: so(read_('Conferencias'), ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada', 'fechamento_mensal']),
+    Frequencia: so(read_('Frequencia'), ['turma_id', 'aluno_id', 'data', 'status']),
+    Reunioes: so(read_('Reunioes'), ['id', 'professor', 'mes', 'data', 'status']),
+    Ocorrencias: so(read_('Ocorrencias'), ['id', 'turma_id', 'data_ocorrencia', 'tipo']),
+    Visitas: so(read_('Visitas'), ['id', 'turma_id', 'data']),
+  };
 }

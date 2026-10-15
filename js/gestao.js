@@ -35,9 +35,9 @@ function indicadoresProfessor(p, P) {
   const base = ativos.length + deslig.length;
   const evasao = base ? Math.round(100 * deslig.length / base) : null;
   // 4. Reuniões realizadas nos meses em que o professor tinha turma
-  const mesesProf = P.meses.filter(m => m <= thisMonth() && (!ts.length || ts.some(t => iniciou(t, m))));
+  const mesesProf = P.meses.filter(m => m <= thisMonth() && ts.some(t => iniciou(t, m)));
   const reunFeitas = mesesProf.filter(m => reunioesDo(p.nome, m).some(r => r.status === 'REALIZADA')).length;
-  const reun = mesesProf.length ? Math.round(100 * reunFeitas / mesesProf.length) : null;
+  const reun = ts.length && mesesProf.length ? Math.round(100 * reunFeitas / mesesProf.length) : null;
   // nota final: média ponderada dos indicadores disponíveis
   const comp = { conf, freq, ret: evasao == null ? null : 100 - evasao, reun };
   let soma = 0, peso = 0;
@@ -94,7 +94,30 @@ routes.avaliacao = () => {
             <button class="btn ghost small" data-action="novaReuniao" data-prof="${esc(x.p.nome)}">Reunião</button></td></tr>`).join('')}</tbody>
       </table></div>
       <p class="muted small">Conferência: só entram os meses já conferidos (o número mostra conferidos/total). Evasão: alunos desligados no período sobre ativos + desligados. Reuniões: meses com reunião realizada sobre meses do período.</p>
+    </section>
+    <section class="card">
+      <div class="card-head"><h3>Acesso da diretoria</h3><span id="dirStatus" class="muted small">verificando…</span></div>
+      <p class="muted small">Página somente leitura com a avaliação dos professores, gráficos e PDFs, protegida por uma senha própria (diferente da sua). Não mostra telefones, responsáveis nem datas de nascimento dos alunos.</p>
+      <p><a href="${DIRETORIA_URL}" target="_blank" rel="noopener"><strong>${DIRETORIA_URL}</strong></a></p>
+      <div class="row-actions"><button class="btn ghost small" data-action="copiarLinkDiretoria">Copiar link</button>
+        <button class="btn primary small" data-action="senhaDiretoria">Definir senha da diretoria</button></div>
     </section>`;
+  API.statusDiretoria().then(ok => { const el = $('#dirStatus'); if (el) el.innerHTML = ok ? '<span class="tag ok">liberado</span>' : '<span class="tag warn">senha ainda não definida</span>'; }).catch(() => {});
+};
+const DIRETORIA_URL = new URL('diretoria.html', location.href.split('#')[0].split('?')[0]).href;
+actions.copiarLinkDiretoria = async () => { try { await navigator.clipboard.writeText(DIRETORIA_URL); toast('Link copiado'); } catch (e) { toast(DIRETORIA_URL); } };
+actions.senhaDiretoria = () => {
+  openModal('Senha da diretoria', `<form id="dirSenhaForm" class="form-grid">
+    <p class="muted small full">Essa senha dá acesso apenas à página da diretoria (somente leitura). Ao trocar, a senha antiga deixa de funcionar.</p>
+    <label class="field">Nova senha<input type="password" name="s1" minlength="6" required autocomplete="new-password"></label>
+    <label class="field">Repita a senha<input type="password" name="s2" minlength="6" required autocomplete="new-password"></label>
+    <div class="form-actions full"><button type="button" class="btn ghost" data-action="closeModal">Cancelar</button><button class="btn primary">Salvar senha</button></div></form>`);
+  $('#dirSenhaForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const f = ev.target;
+    if (f.s1.value !== f.s2.value) { toast('As senhas não conferem', 'error'); return; }
+    try { await run(() => API.definirSenhaDiretoria(f.s1.value), 'Salvando…'); toast('Senha da diretoria definida'); closeModal(); render(); } catch (e) { /* toast já exibido */ }
+  });
 };
 actions.setAvalTipo = el => { ui.avalTipo = el.value; render(); };
 actions.setAvalRef = el => { ui.avalRef = el.value || thisMonth(); render(); };

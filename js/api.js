@@ -32,6 +32,9 @@ const API = {
   removeMany(sheet, ids) { return this.call({ action: 'removeMany', sheet, ids }); },
   saveFoto(foto, imagem) { return this.call({ action: 'saveFoto', foto, dados: imagem }); },
   removeFoto(id) { return this.call({ action: 'removeFoto', id }); },
+  diretoria() { return this.call({ action: 'diretoria' }); },
+  definirSenhaDiretoria(nova) { return this.call({ action: 'definirSenhaDiretoria', nova }); },
+  statusDiretoria() { return this.call({ action: 'statusDiretoria' }); },
   getFotos(ids) { return this.call({ action: 'getFotos', ids }); },
   replaceFrequencia(turma_id, datas, registros) { return this.call({ action: 'replaceFrequencia', turma_id, datas, registros }); },
 };
@@ -65,6 +68,9 @@ const Demo = {
       case 'getAll': out = clone(Object.assign({}, db, { FotosDados: undefined })); break;
       case 'saveFoto': p.foto.id = p.foto.id || uid(); upsert('FotosDados', { id: p.foto.id, p1: p.dados }); out = upsert('Fotos', p.foto); break;
       case 'removeFoto': db.Fotos = db.Fotos.filter(r => r.id !== p.id); db.FotosDados = db.FotosDados.filter(r => r.id !== p.id); break;
+      case 'definirSenhaDiretoria': try { localStorage.setItem('ped_demo_dir', '1'); } catch (e) { /* sem storage */ } out = true; break;
+      case 'statusDiretoria': try { out = !!localStorage.getItem('ped_demo_dir'); } catch (e) { out = false; } break;
+      case 'diretoria': out = clone(db); break;
       case 'getFotos': out = db.FotosDados.filter(r => p.ids.includes(r.id)).map(r => ({ id: r.id, imagem: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(k => r[k] || '').join('') })); break;
       case 'save': out = upsert(p.sheet, p.record); break;
       case 'saveMany': out = p.records.map(r => upsert(p.sheet, r)); break;

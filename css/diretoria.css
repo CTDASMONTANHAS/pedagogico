@@ -1,0 +1,45 @@
+/* Painel da diretoria */
+body { background: var(--bg); color: var(--text); margin: 0; }
+.dir-top { display: flex; align-items: center; gap: 12px; padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.dir-top img { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; }
+.dir-top div { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.dir-top strong { font-size: 17px; }
+.dir-top span { font-size: 12px; color: var(--muted); }
+.dir-main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+.dir-login { max-width: 420px; margin: 8vh auto; }
+.dir-login h2 { margin-top: 0; }
+.dir-login form { display: flex; gap: 8px; }
+.dir-login input { flex: 1; }
+.dir-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
+.dir-filtros label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.dir-filtros .btn { margin-left: auto; }
+.dir-graficos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-bottom: 8px; }
+.dir-graficos h3, .dir-sub { margin: 0 0 10px; font-size: 15px; }
+.dir-sub { margin-top: 18px; }
+.dir-canvas { position: relative; }
+.dir-profs { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.dir-prof { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.dir-prof header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
+.dir-prof header div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.dir-prof header small { color: var(--muted); font-size: 12px; }
+.dir-nota-box { border: 2px solid; border-radius: 10px; padding: 4px 10px; text-align: center; min-width: 74px; }
+.dir-nota-box b { display: block; font-size: 22px; line-height: 1.1; }
+.dir-nota-box span { font-size: 11px; font-weight: 600; }
+.dir-bar { display: grid; grid-template-columns: 130px minmax(0, 1fr) 44px; grid-template-areas: "rot trk val" ". ext ext"; align-items: center; gap: 2px 8px; font-size: 13px; }
+.dir-bar span { grid-area: rot; color: var(--muted); }
+.dir-bar .dir-track { grid-area: trk; height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 99px; overflow: hidden; }
+.dir-bar .dir-track i { display: block; height: 100%; border-radius: 99px; }
+.dir-bar b { grid-area: val; text-align: right; }
+.dir-bar small { grid-area: ext; color: var(--muted); font-size: 11px; }
+.dir-prof footer { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
+.dir-prof footer .btn { margin-left: auto; }
+.dir-nota { margin-top: 20px; }
+.hidden { display: none !important; }
+@media (max-width: 760px) {
+  .dir-graficos { grid-template-columns: 1fr; }
+  .dir-main .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dir-profs { grid-template-columns: 1fr; }
+  .dir-filtros .btn { margin-left: 0; }
+  .dir-top { padding: 10px 16px; }
+  .dir-bar { grid-template-columns: 110px minmax(0, 1fr) 40px; }
+}
