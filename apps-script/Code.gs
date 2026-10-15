@@ -338,10 +338,7 @@ function replaceFrequencia_(turmaId, datas, registros) {
 /* ---------- Fotos (comprovação) ---------- */
 
 function subpasta_(mes) {
-  const raiz = DriveApp.getFolderById(PASTA_FOTOS);
-  const nome = mes || 'Sem data';
-  const it = raiz.getFoldersByName(nome);
-  return it.hasNext() ? it.next() : raiz.createFolder(nome);
+  return subpastaDe_(DriveApp.getFolderById(PASTA_FOTOS), mes || 'Sem data');
 }
 
 /** Salva a imagem no Google Drive (pasta do pedagógico) e os dados da foto na planilha. */
@@ -562,8 +559,15 @@ function pastaDestino_(destino) {
   return base.createFolder(d[1]);
 }
 
+/** Subpasta pelo nome; meses no padrão MM-AAAA (ex.: 10-2026). Renomeia pastas antigas AAAA-MM. */
 function subpastaDe_(pasta, nome) {
   if (!nome) return pasta;
+  const m = String(nome).match(/^(\d{4})-(\d{2})$/);
+  if (m) {
+    nome = m[2] + '-' + m[1];
+    const antigo = pasta.getFoldersByName(m[1] + '-' + m[2]);
+    if (antigo.hasNext() && !pasta.getFoldersByName(nome).hasNext()) { const f = antigo.next(); f.setName(nome); return f; }
+  }
   const it = pasta.getFoldersByName(nome);
   return it.hasNext() ? it.next() : pasta.createFolder(nome);
 }
