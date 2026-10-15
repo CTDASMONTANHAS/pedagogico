@@ -34,7 +34,7 @@ const SCHEMA = {
     'termo_imagem', 'ficha_saude', 'observacoes'],
   Assinaturas: ['id', 'nome', 'cargo', 'imagem', 'atualizado_em'],
   Reunioes: ['id', 'numero', 'status', 'professor', 'mes', 'data', 'hora_inicio', 'hora_fim', 'formato', 'local', 'projeto',
-    'redator', 'assunto', 'relato', 'itens', 'encaminhamentos', 'participantes', 'assinantes', 'criado_em', 'atualizado_em'],
+    'redator', 'assunto', 'relato', 'itens', 'encaminhamentos', 'participantes', 'assinantes', 'criado_em', 'atualizado_em', 'ata_id', 'ata_link'],
   Ocorrencias: ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_nascimento', 'responsavel',
     'telefone', 'data_ocorrencia', 'hora', 'local', 'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao',
     'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em', 'termo_id', 'termo_link'],
@@ -178,7 +178,7 @@ function handle_(req) {
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
-    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto', 'syncOcorrencia', 'removerOcorrencia', 'enviarDrive'];
+    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto', 'syncOcorrencia', 'removerOcorrencia', 'enviarDrive', 'syncAta', 'removerAta'];
     if (writes.indexOf(req.action) !== -1) lock.waitLock(20000);
     try {
       switch (req.action) {
@@ -197,6 +197,9 @@ function handle_(req) {
           props.setProperty('DIRETORIA_KEY', nova);
           return json_({ ok: true });
         }
+        case 'syncAta': return json_({ ok: true, data: syncAta_(req.ata, req.pdf) });
+        case 'removerAta': removerAta_(req.id); return json_({ ok: true });
+        case 'planilhaAtas': return json_({ ok: true, data: planilhaAtas_().getUrl() });
         case 'enviarDrive': return json_({ ok: true, data: enviarDrive_(req.destino, req.subpasta, req.nome, req.pdf) });
         case 'syncOcorrencia': return json_({ ok: true, data: syncOcorrencia_(req.ocorrencia, req.pdf) });
         case 'removerOcorrencia': removerOcorrencia_(req.id); return json_({ ok: true });
@@ -574,4 +577,121 @@ function enviarDrive_(destino, subpasta, nome, pdf) {
   while (antigos.hasNext()) antigos.next().setTrashed(true);
   const f = pasta.createFile(Utilities.newBlob(Utilities.base64Decode(m[1]), 'application/pdf', arquivo));
   return { url: f.getUrl(), pasta: pasta.getName() };
+}
+
+/* ---------- Atas: planilha de controle (criada automaticamente) + PDF da ata no Drive ---------- */
+const CAB_ATAS_ = ['REGISTRO', 'DATA', 'REUNIÃO COM', 'ASSUNTO', 'SITUAÇÃO', 'LINK DO ARQUIVO (GOOGLE DRIVE)'];
+
+/** Planilha "Controle de Atas - ICM": usa a já criada ou cria uma nova (preto e branco) na pasta REUNIÕES PEDAGÓGICAS. */
+function planilhaAtas_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('PLANILHA_ATAS');
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) { /* removida: cria outra */ } }
+  const N = 500, H = 4, ult = H + N;
+  const PRETO = '#000000', BRANCO = '#ffffff', CINZA = '#595959', CLARO = '#f2f2f2', MEDIO = '#bfbfbf';
+  const ss = SpreadsheetApp.create('Controle de Atas - ICM');
+  ss.setSpreadsheetLocale('en_US'); // fórmulas gravadas em inglês; no fim a planilha passa para pt_BR
+  const ws = ss.getSheets()[0];
+  ws.setName('Atas');
+  ws.setHiddenGridlines(true);
+  ws.getRange(1, 1, ult, 6).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+  ws.getRange('A1:F1').merge().setValue('CONTROLE DE ATAS DE REUNIÃO').setBackground(PRETO).setFontColor(BRANCO).setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center');
+  ws.getRange('A2:F2').merge().setValue('Instituto Cultural das Montanhas · Pedagógico').setFontColor(CINZA).setFontStyle('italic').setHorizontalAlignment('center');
+  ws.setRowHeight(1, 36); ws.setRowHeight(2, 22); ws.setRowHeight(3, 8);
+  ws.getRange(H, 1, 1, 6).setValues([CAB_ATAS_]).setBackground(PRETO).setFontColor(BRANCO).setFontWeight('bold').setHorizontalAlignment('center').setWrap(true);
+  ws.setRowHeight(H, 32);
+  [110, 100, 220, 300, 110, 380].forEach(function (w, i) { ws.setColumnWidth(i + 1, w); });
+  const corpo = ws.getRange(H + 1, 1, N, 6);
+  corpo.setBorder(true, true, true, true, true, true, MEDIO, SpreadsheetApp.BorderStyle.SOLID);
+  ws.setRowHeights(H + 1, N, 24);
+  corpo.applyRowBanding(SpreadsheetApp.BandingTheme.GREY, false, false).setFirstRowColor(BRANCO).setSecondRowColor(CLARO);
+  ws.getRange(H + 1, 1, N, 2).setHorizontalAlignment('center');
+  ws.getRange(H + 1, 1, N, 1).setFontWeight('bold');
+  ws.getRange(H + 1, 2, N, 1).setNumberFormat('dd/mm/yyyy');
+  ws.getRange(H + 1, 5, N, 1).setHorizontalAlignment('center').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Realizada', 'Agendada'], true).setAllowInvalid(false).build());
+  const sit = ws.getRange(H + 1, 5, N, 1);
+  ws.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Realizada').setBackground(PRETO).setFontColor(BRANCO).setBold(true).setRanges([sit]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Agendada').setBackground(MEDIO).setFontColor(PRETO).setBold(true).setRanges([sit]).build(),
+  ]);
+  ws.setFrozenRows(H);
+  ws.getRange(H, 1, N + 1, 6).createFilter();
+  if (ws.getMaxColumns() > 6) ws.deleteColumns(7, ws.getMaxColumns() - 6);
+  if (ws.getMaxRows() > ult) ws.deleteRows(ult + 1, ws.getMaxRows() - ult);
+  // resumo por mês
+  const rs = ss.insertSheet('Resumo');
+  rs.setHiddenGridlines(true);
+  rs.getRange('A1:C20').setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+  rs.getRange('A1:C1').merge().setValue('RESUMO').setBackground(PRETO).setFontColor(BRANCO).setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center');
+  rs.setRowHeight(1, 36);
+  rs.getRange('A3:B3').setValues([['Ano de referência', '=YEAR(TODAY())']]).setFontWeight('bold').setBorder(true, true, true, true, true, true, MEDIO, SpreadsheetApp.BorderStyle.SOLID);
+  rs.getRange('A5:C5').setValues([['MÊS', 'REALIZADAS', 'TOTAL REGISTRADAS']]).setBackground(PRETO).setFontColor(BRANCO).setFontWeight('bold').setHorizontalAlignment('center');
+  const D = "'Atas'!$B$" + (H + 1) + ':$B$' + ult, S = "'Atas'!$E$" + (H + 1) + ':$E$' + ult;
+  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const linhas = meses.map(function (m, i) {
+    const de = 'DATE($B$3,' + (i + 1) + ',1)', ate = 'EOMONTH(DATE($B$3,' + (i + 1) + ',1),0)';
+    return [m, '=COUNTIFS(' + D + ',">="&' + de + ',' + D + ',"<="&' + ate + ',' + S + ',"Realizada")', '=COUNTIFS(' + D + ',">="&' + de + ',' + D + ',"<="&' + ate + ')'];
+  });
+  linhas.push(['TOTAL', '=SUM(B6:B17)', '=SUM(C6:C17)']);
+  rs.getRange(6, 1, 13, 3).setValues(linhas).setBorder(true, true, true, true, true, true, MEDIO, SpreadsheetApp.BorderStyle.SOLID);
+  rs.getRange('A6:A18').setFontWeight('bold');
+  rs.getRange('B6:C18').setHorizontalAlignment('center');
+  rs.getRange('A18:C18').setBackground(CINZA).setFontColor(BRANCO).setFontWeight('bold');
+  rs.setColumnWidth(1, 170); rs.setColumnWidth(2, 120); rs.setColumnWidth(3, 150);
+  rs.getRange('A20').setValue('Preenchida automaticamente pelo sistema a cada ata salva (numeração P001/26, P002/26…).').setFontColor(CINZA).setFontStyle('italic');
+  ss.setActiveSheet(ws);
+  SpreadsheetApp.flush();
+  ss.setSpreadsheetLocale('pt_BR');
+  props.setProperty('PLANILHA_ATAS', ss.getId());
+  try { DriveApp.getFileById(ss.getId()).moveTo(pastaDestino_('reunioes')); } catch (e) { /* fica no Meu Drive */ }
+  return ss;
+}
+
+function linhaAta_(sh, numero) {
+  const H = 4, n = sh.getMaxRows() - H;
+  const vals = sh.getRange(H + 1, 1, n, 1).getDisplayValues();
+  let livre = 0;
+  for (let i = 0; i < vals.length; i++) {
+    const v = String(vals[i][0]).trim();
+    if (numero && v === String(numero)) return { linha: H + 1 + i, existe: true };
+    if (!livre && !v) livre = H + 1 + i;
+  }
+  if (!livre) { sh.insertRowsAfter(sh.getMaxRows(), 50); livre = H + 1 + n; }
+  return { linha: livre, existe: false };
+}
+
+/** Grava o PDF da ata em REUNIÕES PEDAGÓGICAS (subpasta do mês) e preenche/atualiza a planilha de atas. */
+function syncAta_(r, pdf) {
+  if (!r || !r.id) throw new Error('Ata inválida');
+  const atual = read_('Reunioes').filter(function (x) { return x.id === r.id; })[0] || {};
+  let arqId = atual.ata_id || '', link = atual.ata_link || '';
+  if (pdf) {
+    const m = String(pdf).match(/base64,(.*)$/);
+    const nome = ('Ata ' + String(r.numero || '').replace('/', '-') + ' - ' + (r.professor || r.assunto || '')).replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 140) + '.pdf';
+    if (arqId) { try { DriveApp.getFileById(arqId).setTrashed(true); } catch (e) { /* já removido */ } }
+    const f = subpastaDe_(pastaDestino_('reunioes'), String(r.data || '').slice(0, 7) || 'Sem data').createFile(Utilities.newBlob(Utilities.base64Decode(m ? m[1] : pdf), 'application/pdf', nome));
+    arqId = f.getId(); link = f.getUrl();
+  }
+  const sh = planilhaAtas_().getSheetByName('Atas');
+  // se o número mudou, procura pela linha antiga
+  const pos = linhaAta_(sh, atual.numero && atual.numero !== r.numero && linhaAta_(sh, atual.numero).existe ? atual.numero : r.numero);
+  const p = String(r.data || '').split('-');
+  const data = p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : '';
+  sh.getRange(pos.linha, 1, 1, 6).setValues([[r.numero || '', data, r.professor || 'Reunião geral', r.assunto || '', r.status === 'REALIZADA' ? 'Realizada' : 'Agendada', link]]);
+  sh.getRange(pos.linha, 2).setNumberFormat('dd/mm/yyyy');
+  saveMany_('Reunioes', [{ id: r.id, ata_id: arqId, ata_link: link }]);
+  return { ata_id: arqId, ata_link: link, planilha: planilhaAtas_().getUrl() };
+}
+
+function removerAta_(id) {
+  const r = read_('Reunioes').filter(function (x) { return x.id === String(id); })[0];
+  if (!r) return;
+  if (r.ata_id) { try { DriveApp.getFileById(r.ata_id).setTrashed(true); } catch (e) { /* já removido */ } }
+  try { const sh = planilhaAtas_().getSheetByName('Atas'); const pos = linhaAta_(sh, r.numero); if (pos.existe) sh.deleteRow(pos.linha); } catch (e) { /* segue */ }
+}
+
+/** Executar no editor para criar a planilha de atas agora (mostra o link no registro de execução). */
+function criarPlanilhaAtas() {
+  Logger.log('Planilha de atas: ' + planilhaAtas_().getUrl());
 }

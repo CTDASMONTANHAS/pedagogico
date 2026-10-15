@@ -33,6 +33,8 @@ const API = {
   saveFoto(foto, imagem) { return this.call({ action: 'saveFoto', foto, dados: imagem }); },
   removeFoto(id) { return this.call({ action: 'removeFoto', id }); },
   enviarDrive(destino, subpasta, nome, pdf) { return this.call({ action: 'enviarDrive', destino, subpasta, nome, pdf }); },
+  syncAta(ata, pdf) { return this.call({ action: 'syncAta', ata, pdf }); },
+  removerAta(id) { return this.call({ action: 'removerAta', id }); },
   syncOcorrencia(ocorrencia, pdf) { return this.call({ action: 'syncOcorrencia', ocorrencia, pdf }); },
   removerOcorrencia(id) { return this.call({ action: 'removerOcorrencia', id }); },
   diretoria() { return this.call({ action: 'diretoria' }); },
@@ -76,6 +78,8 @@ const Demo = {
       case 'diretoria': out = clone(db); break;
       case 'syncOcorrencia': out = { termo_id: 'demo', termo_link: '', linha: 0 }; break;
       case 'removerOcorrencia': out = true; break;
+      case 'syncAta': out = { ata_id: 'demo', ata_link: '', planilha: '' }; break;
+      case 'removerAta': out = true; break;
       case 'enviarDrive': out = { url: '', pasta: p.destino + (p.subpasta ? '/' + p.subpasta : '') }; break;
       case 'getFotos': out = db.FotosDados.filter(r => p.ids.includes(r.id)).map(r => ({ id: r.id, imagem: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(k => r[k] || '').join('') })); break;
       case 'save': out = upsert(p.sheet, p.record); break;

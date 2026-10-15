@@ -39,9 +39,23 @@ function professores() {
 }
 const reunioesDo = (prof, mes) => DB.Reunioes.filter(r => r.professor === prof && r.mes === mes);
 
+/** Numeração das atas do pedagógico: P001/26, P002/26… (reinicia a cada ano). */
 function proximoNumero(ano) {
-  const nums = DB.Reunioes.filter(r => (r.numero || '').endsWith('/' + ano)).map(r => parseInt(r.numero, 10) || 0);
-  return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0') + '/' + ano;
+  const aa = String(ano).slice(-2);
+  const nums = DB.Reunioes.map(r => String(r.numero || '').match(/^P(\d+)\/(\d{2})$/)).filter(m => m && m[2] === aa).map(m => +m[1]);
+  return 'P' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0') + '/' + aa;
+}
+
+/** Grava o PDF da ata no Drive e preenche a planilha de controle de atas. */
+async function registrarAtaNaPlanilha(rec) {
+  try {
+    await PDF.setAssinante(null);
+    const pdfs = await PDF.capturar(() => PDF.ata(reuniaoObj(rec)));
+    const r = await run(() => API.syncAta(rec, pdfs[0] && pdfs[0].pdf), 'Registrando na planilha de atas…');
+    if (r) upsertLocal('Reunioes', { id: rec.id, ata_id: r.ata_id, ata_link: r.ata_link });
+    toast('Ata registrada na planilha de controle');
+    render();
+  } catch (e) { toast('Ata salva, mas não foi possível preencher a planilha: ' + e.message, 'error'); }
 }
 
 /* ================= TELA ================= */
@@ -83,7 +97,8 @@ routes.reunioes = () => {
             <td>${r ? `<small>Ata ${esc(r.numero)}${r.assunto ? ' · ' + esc(r.assunto) : ''}</small>` : '—'}</td>
             <td class="row-actions">${r ? `<button class="btn ghost small" data-action="editarReuniao" data-id="${r.id}">Editar</button>
               <button class="btn ghost small" data-action="ataWord" data-id="${r.id}">Word</button>
-              <button class="btn ghost small" data-action="ataPdf" data-id="${r.id}">PDF</button>`
+              <button class="btn ghost small" data-action="ataPdf" data-id="${r.id}">PDF</button>
+              ${r.ata_link ? `<a class="btn ghost small" href="${esc(r.ata_link)}" target="_blank" rel="noopener" title="Ata guardada no Google Drive">Drive</a>` : `<button class="btn ghost small" data-action="planilhaAta" data-id="${r.id}" title="Registrar na planilha de atas e no Drive">Planilha</button>`}`
               : `<button class="btn primary small" data-action="novaReuniao" data-prof="${esc(p.nome)}">Registrar reunião</button>`}</td></tr>`;
         }).join('')}</tbody></table></div>
       ${gerais.length ? `<h4>Outras reuniões do mês</h4><ul class="list">${gerais.map(r => `<li><span><strong>Ata ${esc(r.numero)}</strong> · ${fmtDate(r.data)} · ${esc(r.assunto || '')}</span>
@@ -189,6 +204,7 @@ function abrirAta(r) {
     try {
       await save('Reunioes', rec);
       closeModal(); ui.mesReuniao = rec.mes; render();
+      await registrarAtaNaPlanilha(rec);
       if (acao === 'word') await baixarAtaWord(reuniaoObj(rec));
       if (acao === 'pdf') await run(() => PDF.ata(reuniaoObj(rec)), 'Gerando PDF…');
     } catch (e) { /* toast já exibido */ }
@@ -200,7 +216,11 @@ actions.novaReuniao = el => {
   abrirAta({ numero: proximoNumero(data.slice(0, 4)), professor: el.dataset.prof || '', data, status: 'AGENDADA' });
 };
 actions.editarReuniao = el => abrirAta(reuniaoObj(reuniao(el.dataset.id)));
-actions.excluirReuniao = el => confirmBox('Excluir esta ata?', 'Excluir', () => remove('Reunioes', el.dataset.id));
+actions.excluirReuniao = el => confirmBox('Excluir esta ata? A linha da planilha de atas também será removida e o PDF irá para a lixeira do Drive.', 'Excluir', async () => {
+  try { await API.removerAta(el.dataset.id); } catch (e) { /* segue com a exclusão no sistema */ }
+  await remove('Reunioes', el.dataset.id);
+});
+actions.planilhaAta = el => registrarAtaNaPlanilha(reuniao(el.dataset.id));
 actions.ataAddPart = () => $('#ataParts').insertAdjacentHTML('beforeend', linhaParticipante({ instituicao: 'Instituto Cultural das Montanhas' }));
 actions.ataAddItem = () => $('#ataItens').insertAdjacentHTML('beforeend', linhaItem({}));
 actions.ataRemoveLinha = el => (el.closest('.ata-item') || el.closest('.ata-row')).remove();
