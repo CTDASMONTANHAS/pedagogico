@@ -19,37 +19,60 @@ function proximoNumeroVisita(ano) {
 }
 
 ui.mesVisita = ui.mesVisita || thisMonth();
+ui.areaVisita = ui.areaVisita || '';
+const visitasDe = (tid, mes) => DB.Visitas.filter(v => v.turma_id === tid && (v.data || '').startsWith(mes)).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+
 routes.visitas = () => {
   setHeader('Visitas às aulas', `<input type="month" class="input" value="${ui.mesVisita}" data-change="setMesVisita">
     <button class="btn primary" data-action="novaVisita">+ Nova visita</button>`);
-  const mes = ui.mesVisita;
-  const doMes = DB.Visitas.filter(v => (v.data || '').startsWith(mes)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  const ts = turmasConferencia('', mes);
-  const visitadas = new Set(doMes.map(v => v.turma_id));
-  const semVisita = ts.filter(t => !visitadas.has(t.id));
+  const mes = ui.mesVisita, ano = mes.slice(0, 4);
+  const ts = turmasConferencia(ui.areaVisita, mes);
+  const visitadas = ts.filter(t => visitasDe(t.id, mes).length);
+  const doMes = DB.Visitas.filter(v => (v.data || '').startsWith(mes) && ts.some(t => t.id === v.turma_id));
   const nFotos = doMes.reduce((s, v) => s + fotosDaVisita(v.id).length, 0);
-  view.innerHTML = `
+  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${pad(i + 1)}`);
+  const todas = turmasAtivas(ui.areaVisita);
+  const situacao = (t, m) => {
+    const n = visitasDe(t.id, m).length;
+    if (n) return `<span class="hist-cell st-ok" title="${n} visita(s)">✓${n > 1 ? n : ''}</span>`;
+    if (!iniciou(t, m)) return '<span class="hist-cell st-future" title="Turma ainda não iniciada">·</span>';
+    if (m > thisMonth()) return '<span class="hist-cell st-future">·</span>';
+    return '<span class="hist-cell st-none" title="Sem visita">—</span>';
+  };
+  const linhaTurma = t => {
+    const vs = visitasDe(t.id, mes);
+    const fs = vs.flatMap(v => fotosDaVisita(v.id));
+    const acoesVisita = v => `<button class="btn ghost small" data-action="editarVisita" data-id="${v.id}">Editar</button>
+      <button class="btn ghost small" data-action="pdfVisita" data-id="${v.id}">PDF</button>`;
+    return `<tr><td>${areaBadge(t.area)} <strong>${esc(shortName(t.nome))}</strong></td>
+      <td><small class="muted">${esc(t.professor || '—')}</small></td>
+      <td>${vs.length ? vs.map(v => `<span class="tag ok">✓ visitada ${fmtDate(v.data)}</span>`).join(' ') : '<span class="flag amber">pendente</span>'}</td>
+      <td>${vs.length ? vs.map(v => `<small>Relatório ${esc(v.numero)}${v.observador ? ' · ' + esc(v.observador) : ''}</small>`).join('<br>') : '—'}</td>
+      <td>${fs.length ? `<div class="foto-mini">${fs.slice(0, 3).map(f => `<img src="${f.miniatura}" data-action="verFoto" data-id="${f.id}" title="${esc(f.legenda || '')}">`).join('')}${fs.length > 3 ? `<span>+${fs.length - 3}</span>` : ''}</div>` : '<small class="muted">—</small>'}</td>
+      <td class="row-actions">${vs.length ? vs.map(acoesVisita).join('') : `<button class="btn primary small" data-action="novaVisita" data-turma="${t.id}">Registrar visita</button>`}</td></tr>`;
+  };
+  view.innerHTML = `${areaTabs('areaVisita', true)}
     <div class="kpis">
-      ${kpi('Visitas no mês', doMes.length, fmtMonth(mes))}
-      ${kpi('Turmas visitadas', `${ts.filter(t => visitadas.has(t.id)).length}/${ts.length}`, '', semVisita.length ? 'k-amber' : '')}
+      ${kpi('Referência', fmtMonth(mes))}
+      ${kpi('Turmas visitadas', `${visitadas.length}/${ts.length}`, visitadas.length === ts.length && ts.length ? 'todas visitadas' : `${ts.length - visitadas.length} pendente(s)`, visitadas.length === ts.length ? '' : 'k-amber')}
+      ${kpi('Relatórios no mês', doMes.length)}
       ${kpi('Fotos registradas', nFotos, 'salvas no Drive do pedagógico')}
-      ${kpi('Visitas no ano', DB.Visitas.filter(v => (v.data || '').startsWith(mes.slice(0, 4))).length)}
     </div>
     <section class="card">
-      <div class="card-head"><h3>Relatórios de visita — ${fmtMonth(mes)}</h3><small class="muted">o PDF sai na folha timbrada, com aspectos observados, fotos com legenda e assinaturas</small></div>
-      ${doMes.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Nº</th><th>Data</th><th>Turma</th><th>Professor(a)</th><th>Observador(a)</th><th>Fotos</th><th></th></tr></thead><tbody>
-      ${doMes.map(v => { const t = turma(v.turma_id) || {}; const fs = fotosDaVisita(v.id); return `<tr>
-        <td><strong>${esc(v.numero)}</strong></td><td>${fmtDate(v.data)}${v.hora ? ' ' + esc(v.hora) : ''}</td>
-        <td>${t.area ? areaBadge(t.area) : ''} ${esc(t.nome || '')}</td><td>${esc(v.professor || t.professor || '')}</td><td>${esc(v.observador || '')}</td>
-        <td><div class="foto-mini">${fs.slice(0, 4).map(f => `<img src="${f.miniatura}" data-action="verFoto" data-id="${f.id}" title="${esc(f.legenda || '')}">`).join('')}${fs.length > 4 ? `<span>+${fs.length - 4}</span>` : ''}</div></td>
-        <td class="row-actions"><button class="btn ghost small" data-action="editarVisita" data-id="${v.id}">Editar</button>
-          <button class="btn primary small" data-action="pdfVisita" data-id="${v.id}">PDF</button></td></tr>`; }).join('')}
-      </tbody></table></div>` : '<p class="empty">Nenhuma visita registrada neste mês.</p>'}
+      <div class="card-head"><h3>Visitas de ${fmtMonth(mes)}</h3><small class="muted">uma visita por turma por mês · o relatório em PDF sai com aspectos observados, fotos e assinaturas</small></div>
+      ${ts.length ? `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Turma</th><th>Professor(a)</th><th>Situação</th><th>Relatório</th><th>Fotos</th><th></th></tr></thead>
+        <tbody>${ts.map(linhaTurma).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma turma ativa neste mês.</p>'}
     </section>
-    ${semVisita.length ? `<section class="card"><h3>Turmas ainda sem visita em ${fmtMonth(mes)} <span class="count">${semVisita.length}</span></h3>
-      <div class="chips-list">${semVisita.map(t => `<button class="btn ghost small" data-action="novaVisita" data-turma="${t.id}">${esc(shortName(t.nome))}</button>`).join('')}</div></section>` : ''}`;
+    <section class="card">
+      <h3>Controle de ${ano} <small class="muted">✓ visitada · — sem visita · · turma não iniciada</small></h3>
+      <div class="table-wrap"><table class="table hist"><thead><tr><th>Turma</th>${meses.map(m => `<th><a href="javascript:void 0" data-action="irMesVisita" data-mes="${m}" class="${m === mes ? 'mes-atual' : ''}">${MESES[+m.slice(5) - 1].slice(0, 3)}</a></th>`).join('')}<th>Total</th></tr></thead>
+      <tbody>${todas.map(t => `<tr><td>${esc(shortName(t.nome))}</td>${meses.map(m => `<td>${situacao(t, m)}</td>`).join('')}
+        <td><strong>${meses.filter(m => visitasDe(t.id, m).length).length}</strong></td></tr>`).join('')}</tbody></table></div>
+    </section>`;
 };
 actions.setMesVisita = el => { ui.mesVisita = el.value || thisMonth(); render(); };
+actions.irMesVisita = el => { ui.mesVisita = el.dataset.mes; render(); window.scrollTo(0, 0); };
 
 function linhaFotoVisita(f) {
   // f: foto já salva (id) ou nova (key + file)

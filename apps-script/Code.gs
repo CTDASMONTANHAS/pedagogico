@@ -157,10 +157,16 @@ function handle_(req) {
       return json_({ ok: false, error: 'Primeiro acesso: crie a senha do sistema.', semSenha: true });
     }
     // Painel da diretoria: senha própria, somente leitura
-    if (req.action === 'diretoria') {
+    if (req.action === 'diretoria' || req.action === 'diretoriaFotos') {
       const dk = props.getProperty('DIRETORIA_KEY');
       if (!dk) return json_({ ok: false, error: 'O acesso da diretoria ainda não foi liberado pela coordenação.' });
       if (req.key !== dk) return json_({ ok: false, error: 'Senha inválida', auth: false });
+      if (req.action === 'diretoriaFotos') {
+        // só fotos de visitas às aulas
+        const permitidas = {};
+        read_('Fotos').forEach(function (f) { if (f.visita_id) permitidas[f.id] = true; });
+        return json_({ ok: true, data: getFotos_((req.ids || []).filter(function (id) { return permitidas[id]; }).slice(0, 8)) });
+      }
       return json_({ ok: true, data: dadosDiretoria_() });
     }
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
@@ -387,12 +393,14 @@ function dadosDiretoria_() {
     return lista.map(function (r) { const o = {}; campos.forEach(function (c) { o[c] = r[c] === undefined ? '' : r[c]; }); return o; });
   };
   return {
-    Turmas: so(read_('Turmas'), ['id', 'area', 'nome', 'professor', 'ativa', 'inicio']),
+    Turmas: so(read_('Turmas'), ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'inicio']),
     Alunos: so(read_('Alunos'), ['id', 'turma_id', 'nome', 'ativo', 'data_desligamento']),
     Conferencias: so(read_('Conferencias'), ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada', 'fechamento_mensal']),
     Frequencia: so(read_('Frequencia'), ['turma_id', 'aluno_id', 'data', 'status']),
-    Reunioes: so(read_('Reunioes'), ['id', 'professor', 'mes', 'data', 'status']),
+    Reunioes: read_('Reunioes'),
     Ocorrencias: so(read_('Ocorrencias'), ['id', 'turma_id', 'data_ocorrencia', 'tipo']),
-    Visitas: so(read_('Visitas'), ['id', 'turma_id', 'data']),
+    Visitas: read_('Visitas'),
+    Fotos: so(read_('Fotos').filter(function (f) { return f.visita_id; }),
+      ['id', 'tipo', 'turma_id', 'visita_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'ordem']),
   };
 }

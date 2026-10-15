@@ -6,15 +6,20 @@
   <title>Painel da Diretoria · Instituto Cultural das Montanhas</title>
   <meta name="robots" content="noindex">
   <link rel="icon" href="assets/logo.png">
-  <link rel="stylesheet" href="css/style.css?v=16">
-  <link rel="stylesheet" href="css/diretoria.css?v=16">
+  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/diretoria.css?v=17">
 </head>
 <body>
   <header class="dir-top">
     <img src="assets/logo.png" alt="">
-    <div><strong>Painel da Diretoria</strong><span>Instituto Cultural das Montanhas · Avaliação dos professores</span></div>
+    <div><strong>Painel da Diretoria</strong><span id="dirSub">Instituto Cultural das Montanhas</span></div>
     <button class="btn ghost small hidden" id="dirSair">Sair</button>
   </header>
+  <nav class="dir-nav hidden" id="dirNav">
+    <a href="diretoria.html" data-p="avaliacao">Avaliação dos professores</a>
+    <a href="diretoria.html?p=reunioes" data-p="reunioes">Reuniões pedagógicas</a>
+    <a href="diretoria.html?p=visitas" data-p="visitas">Visitas pedagógicas</a>
+  </nav>
 
   <main class="dir-main">
     <section id="dirLogin" class="card dir-login hidden">
@@ -28,36 +33,34 @@
     </section>
 
     <div id="dirApp" class="hidden">
-      <div class="dir-filtros">
-        <label>Período<select class="input" id="dirTipo">
-          <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option>
-          <option value="semestral">Semestral</option><option value="anual">Anual</option></select></label>
-        <label>Mês de referência<input type="month" class="input" id="dirRef"></label>
-        <span class="muted small" id="dirPeriodo"></span>
-        <button class="btn primary" id="dirPdf">Baixar PDF geral</button>
-      </div>
+      <div class="dir-filtros" id="dirFiltros"></div>
       <div id="dirView"></div>
-      <p class="muted small dir-nota">Somente leitura. Indicadores calculados a partir da conferência pedagógica mensal, dos registros de chamada, dos desligamentos e das atas de reunião lançados pela coordenação.
-        Nota = conferência 35% + frequência das turmas 30% + permanência dos alunos 20% + reuniões mensais 15%.</p>
+      <p class="muted small dir-nota" id="dirRodape"></p>
     </div>
   </main>
 
+  <div id="modal" class="modal hidden"><div class="modal-card wide"><div class="modal-head"><h3 id="modalTitle"></h3><button class="btn ghost icon" id="modalClose" aria-label="Fechar">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
   <div id="loading" class="loading hidden"><div class="spinner"></div><span id="loadingText">Carregando…</span></div>
 
   <script>
     // a página da diretoria reaproveita os cálculos do sistema sem as telas de edição
     const routes = {}, actions = {}, ui = {};
     function render() {}
+    function toast(msg) { if (msg) console.log(msg); }
+    async function run(fn) { return fn(); }
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <script src="js/config.js?v=16"></script>
-  <script src="js/api.js?v=16"></script>
-  <script src="js/logic.js?v=16"></script>
-  <script src="js/pdf.js?v=16"></script>
-  <script src="js/reunioes.js?v=16"></script>
-  <script src="js/gestao.js?v=16"></script>
-  <script src="js/diretoria.js?v=16"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="js/config.js?v=17"></script>
+  <script src="js/api.js?v=17"></script>
+  <script src="js/logic.js?v=17"></script>
+  <script src="js/pdf.js?v=17"></script>
+  <script src="js/reunioes.js?v=17"></script>
+  <script src="js/gestao.js?v=17"></script>
+  <script src="js/fotos.js?v=17"></script>
+  <script src="js/visitas.js?v=17"></script>
+  <script src="js/diretoria.js?v=17"></script>
 </body>
 </html>

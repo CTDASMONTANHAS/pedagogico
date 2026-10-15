@@ -43,3 +43,17 @@ body { background: var(--bg); color: var(--text); margin: 0; }
   .dir-top { padding: 10px 16px; }
   .dir-bar { grid-template-columns: 110px minmax(0, 1fr) 40px; }
 }
+.dir-nav { display: flex; flex-direction: row; position: static; width: auto; height: auto; gap: 4px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.dir-nav a { display: inline-block; border-radius: 0; margin: 0; padding: 10px 14px; font-size: 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.dir-nav a.ativo { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.dir-doc dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 12px; margin: 0 0 8px; font-size: 14px; }
+.dir-doc dt { color: var(--muted); }
+.dir-doc dd { margin: 0; }
+.dir-doc h4 { margin: 16px 0 6px; }
+.dir-doc p { margin: 0 0 8px; line-height: 1.5; }
+.dir-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.dir-fotos figure { margin: 0; }
+.dir-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; cursor: zoom-in; }
+.dir-fotos figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.foto-mini img { cursor: zoom-in; }
+@media (max-width: 760px) { .dir-nav { padding: 0 8px; } .dir-doc dl { grid-template-columns: 1fr; } }
