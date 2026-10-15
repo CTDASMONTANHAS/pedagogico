@@ -7,8 +7,7 @@
   const lerChave = () => { try { return localStorage.getItem(CHAVE) || ''; } catch (e) { return ''; } };
   const gravarChave = v => { try { v ? localStorage.setItem(CHAVE, v) : localStorage.removeItem(CHAVE); } catch (e) { /* sem storage */ } };
   const graficos = [];
-  const st = { mes: addMonths(thisMonth(), -1), tipo: 'mensal', area: '' };
-  if (PAGINA !== 'avaliacao') st.mes = thisMonth();
+  const st = { mes: thisMonth(), tipo: 'mensal', area: '' };
 
   async function chamar(payload) {
     if (API.demo) return Demo.handle(Object.assign({}, payload, { action: payload.action === 'diretoriaFotos' ? 'getFotos' : 'diretoria' }));
@@ -23,7 +22,6 @@
   function carregando(on, txt) { $('#loading').classList.toggle('hidden', !on); $('#loadingText').textContent = txt || 'Carregando…'; }
   function abrirModal(titulo, html) { $('#modalTitle').textContent = titulo; $('#modalBody').innerHTML = html; $('#modal').classList.remove('hidden'); }
   function fecharModal() { $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
-  async function tarefa(fn, txt) { carregando(true, txt); try { await fn(); } catch (e) { alert(e.message); } finally { carregando(false); } }
 
   async function entrar(senha) {
     if (senha) gravarChave(senha);
@@ -54,7 +52,7 @@
     const mesInp = `<label>Mês de referência<input type="month" class="input" id="dirRef" value="${st.mes}"></label>`;
     if (PAGINA === 'avaliacao') {
       return `<label>Período<select class="input" id="dirTipo">${[['mensal', 'Mensal'], ['trimestral', 'Trimestral'], ['semestral', 'Semestral'], ['anual', 'Anual']].map(([k, l]) => `<option value="${k}" ${k === st.tipo ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        ${mesInp}<span class="muted small" id="dirPeriodo"></span><button class="btn primary" data-pdf-geral>Baixar PDF geral</button>`;
+        ${mesInp}<span class="muted small" id="dirPeriodo"></span>`;
     }
     return mesInp;
   }
@@ -107,8 +105,7 @@
           ${barra('Frequência das turmas', x.freq, false, `${x.aulas} aulas registradas`)}
           ${barra('Evasão', x.evasao, true, `${x.deslig.length} saíram de ${x.ativos + x.deslig.length}`)}
           ${barra('Reuniões mensais', x.reun, false, `${x.reunFeitas}/${x.mesesProf.length} meses`)}
-          <footer><span>${x.pendencias.length} pendência(s) na conferência</span><span>${x.alertas.length} aluno(s) em alerta de faltas</span><span>${x.ocorr.length} ocorrência(s)</span>
-            <button class="btn ghost small" data-ficha="${esc(x.p.nome)}">Ficha PDF</button></footer>
+          <footer><span>${x.pendencias.length} pendência(s) na conferência</span><span>${x.alertas.length} aluno(s) em alerta de faltas</span><span>${x.ocorr.length} ocorrência(s)</span></footer>
         </article>`).join('') || '<p class="empty">Nenhum professor com turmas no período.</p>'}</div>`;
     const css = getComputedStyle(document.documentElement);
     const grid = css.getPropertyValue('--border').trim() || '#ddd';
@@ -139,7 +136,7 @@
       if (rs.length) return '<span class="hist-cell st-warn" title="Agendada">◷</span>';
       return m > thisMonth() ? '<span class="hist-cell st-future">·</span>' : '<span class="hist-cell st-none" title="Sem reunião">—</span>';
     };
-    const botoes = r => `<button class="btn ghost small" data-ata="${r.id}">Ver ata</button><button class="btn ghost small" data-ata-pdf="${r.id}">PDF</button><button class="btn ghost small" data-ata-word="${r.id}">Word</button>`;
+    const botoes = r => `<button class="btn ghost small" data-ata="${r.id}">Ver ata</button>`;
     $('#dirRodape').textContent = 'Somente leitura. Uma reunião mensal com cada professor, com a secretaria e com o responsável pela van; as atas são lavradas pela coordenação pedagógica.';
     $('#dirView').innerHTML = `
       <div class="kpis">
@@ -179,8 +176,7 @@
       <h4>Participantes</h4><ul>${a.participantes.map(p => `<li>${esc(p.nome)}${p.funcao ? ' — ' + esc(p.funcao) : ''}</li>`).join('') || '<li>—</li>'}</ul>
       ${a.relato ? `<h4>Relato</h4><p>${esc(a.relato).replace(/\n/g, '<br>')}</p>` : ''}
       ${a.itens.length ? `<h4>Assuntos tratados</h4>${a.itens.map(i => `<p><strong>${esc(i.titulo || '')}</strong><br>${esc(i.texto || '').replace(/\n/g, '<br>')}</p>`).join('')}` : ''}
-      ${a.encaminhamentos ? `<h4>Encaminhamentos</h4><p>${esc(a.encaminhamentos).replace(/\n/g, '<br>')}</p>` : ''}
-      <div class="form-actions"><button class="btn ghost" data-ata-word="${r.id}">Baixar Word</button><button class="btn primary" data-ata-pdf="${r.id}">Baixar PDF</button></div></div>`);
+      ${a.encaminhamentos ? `<h4>Encaminhamentos</h4><p>${esc(a.encaminhamentos).replace(/\n/g, '<br>')}</p>` : ''}</div>`);
   }
 
   /* ---------- Visitas pedagógicas ---------- */
@@ -215,7 +211,7 @@
               <td>${vs.length ? vs.map(v => `<span class="tag ok">✓ visitada ${fmtDate(v.data)}</span>`).join(' ') : '<span class="flag amber">pendente</span>'}</td>
               <td>${vs.length ? vs.map(v => `<small>Relatório ${esc(v.numero)}${v.observador ? ' · ' + esc(v.observador) : ''}</small>`).join('<br>') : '—'}</td>
               <td>${fs.length ? `<div class="foto-mini">${fs.slice(0, 3).map(f => `<img src="${f.miniatura}" data-foto="${f.id}" title="${esc(f.legenda || '')}">`).join('')}${fs.length > 3 ? `<span>+${fs.length - 3}</span>` : ''}</div>` : '<small class="muted">—</small>'}</td>
-              <td class="row-actions">${vs.map(v => `<button class="btn ghost small" data-visita="${v.id}">Ver relatório</button><button class="btn ghost small" data-visita-pdf="${v.id}">PDF</button>`).join('')}</td></tr>`;
+              <td class="row-actions">${vs.map(v => `<button class="btn ghost small" data-visita="${v.id}">Ver relatório</button>`).join('')}</td></tr>`;
           }).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma turma ativa neste mês.</p>'}
       </section>
       <section class="card">
@@ -238,8 +234,7 @@
       <table class="table"><tbody>${ASPECTOS_VISITA.map(([k, l]) => `<tr><td>${l}</td><td style="color:${cor[asp[k] || 'NA']};font-weight:700;text-align:right">${NOTAS_VISITA[asp[k] || 'NA']}</td></tr>`).join('')}</tbody></table>
       ${[['Relato da visita', v.relato], ['Pontos positivos', v.pontos_positivos], ['Pontos a melhorar', v.pontos_melhorar], ['Encaminhamentos', v.encaminhamentos]]
         .filter(([, x]) => x).map(([h, x]) => `<h4>${h}</h4><p>${esc(x).replace(/\n/g, '<br>')}</p>`).join('')}
-      ${fs.length ? `<h4>Fotos e evidências</h4><div class="dir-fotos">${fs.map(f => `<figure><img src="${f.miniatura}" data-foto="${f.id}"><figcaption>${esc(f.legenda || '')}</figcaption></figure>`).join('')}</div>` : ''}
-      <div class="form-actions"><button class="btn primary" data-visita-pdf="${v.id}">Baixar PDF</button></div></div>`);
+      ${fs.length ? `<h4>Fotos e evidências</h4><div class="dir-fotos">${fs.map(f => `<figure><img src="${f.miniatura}" data-foto="${f.id}"><figcaption>${esc(f.legenda || '')}</figcaption></figure>`).join('')}</div>` : ''}</div>`);
   }
   async function zoomFoto(id) {
     const f = DB.Fotos.find(x => x.id === id); if (!f) return;
@@ -253,17 +248,13 @@
 
   /* ---------- eventos ---------- */
   document.addEventListener('click', e => {
-    const el = e.target.closest('[data-area],[data-mes],[data-ficha],[data-pdf-geral],[data-ata],[data-ata-pdf],[data-ata-word],[data-visita],[data-visita-pdf],[data-foto]');
+    const el = e.target.closest('[data-area],[data-mes],[data-ata],[data-visita],[data-foto]');
     if (!el) return;
     const d = el.dataset;
     if (d.area !== undefined) { st.area = d.area; desenhar(); }
     else if (d.mes) { st.mes = d.mes; desenhar(); window.scrollTo(0, 0); }
-    else if (d.ficha !== undefined || d.pdfGeral !== undefined) tarefa(async () => { await PDF.setAssinante(null); await PDF.avaliacao(st.tipo, st.mes, d.ficha); }, 'Gerando PDF…');
     else if (d.ata) verAta(DB.Reunioes.find(r => r.id === d.ata));
-    else if (d.ataPdf) tarefa(async () => { await PDF.setAssinante(null); await PDF.ata(reuniaoObj(DB.Reunioes.find(r => r.id === d.ataPdf))); }, 'Gerando PDF…');
-    else if (d.ataWord) tarefa(() => baixarAtaWord(reuniaoObj(DB.Reunioes.find(r => r.id === d.ataWord))), 'Gerando Word…');
     else if (d.visita) verVisita(DB.Visitas.find(v => v.id === d.visita));
-    else if (d.visitaPdf) tarefa(async () => { await PDF.setAssinante(null); await PDF.visita(DB.Visitas.find(v => v.id === d.visitaPdf)); }, 'Gerando PDF (carregando fotos)…');
     else if (d.foto) zoomFoto(d.foto);
   });
   document.addEventListener('change', e => {

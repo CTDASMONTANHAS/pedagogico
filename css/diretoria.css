@@ -57,3 +57,5 @@ body { background: var(--bg); color: var(--text); margin: 0; }
 .dir-fotos figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .foto-mini img { cursor: zoom-in; }
 @media (max-width: 760px) { .dir-nav { padding: 0 8px; } .dir-doc dl { grid-template-columns: 1fr; } }
+/* painel somente para consulta na tela: impressão desativada */
+@media print { body { display: none !important; } }
