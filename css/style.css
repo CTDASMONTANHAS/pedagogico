@@ -67,7 +67,7 @@ nav a.active { background: var(--brand); color: var(--surface); }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn.icon { padding: 6px 10px; }
 .danger-text { color: var(--bad) !important; }
-.input, input[type=text], input[type=date], input[type=month], input[type=time], input[type=number], input[type=password], select, textarea {
+.input, input:not([type]), input[type=text], input[type=tel], input[type=email], input[type=date], input[type=month], input[type=time], input[type=number], input[type=password], select, textarea {
   font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 0;
 }
 textarea { width: 100%; resize: vertical; }
@@ -177,9 +177,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .modal-card.wide { max-width: 880px; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .modal-body { padding: 16px 18px 18px; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 14px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
-.field input, .field select, .field textarea { color: var(--text); font-size: 14px; }
+.field input, .field select, .field textarea { color: var(--text); font-size: 14px; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .field small { font-weight: 400; }
 .full { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
