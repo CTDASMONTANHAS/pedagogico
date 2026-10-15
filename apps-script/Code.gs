@@ -37,7 +37,7 @@ const SCHEMA = {
     'redator', 'assunto', 'relato', 'itens', 'encaminhamentos', 'participantes', 'assinantes', 'criado_em', 'atualizado_em'],
   Ocorrencias: ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_nascimento', 'responsavel',
     'telefone', 'data_ocorrencia', 'hora', 'local', 'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao',
-    'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em'],
+    'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em', 'termo_id', 'termo_link'],
   Fotos: ['id', 'tipo', 'turma_id', 'evento_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'partes', 'criado_em',
     'visita_id', 'drive_id', 'ordem'],
   Visitas: ['id', 'numero', 'status', 'data', 'hora', 'turma_id', 'professor', 'observador', 'observador_cargo', 'alunos_presentes',
@@ -50,6 +50,8 @@ const LAZY_ = { FotosDados: true };
 const PASTA_FOTOS = '1eFKhRiSeZ9_Hrf_pFixBTqLAPYwFOEt5';
 // Pasta de documentos que a diretoria pode consultar (somente leitura, dentro do painel)
 const PASTA_DIRETORIA = '139uCJIGRFzMtCva95cFIFv33ZOn4EKTI';
+// Planilha "Controle de Ocorrências e Advertências - ICM" (Planilhas Google), preenchida a cada ocorrência
+const PLANILHA_OCORRENCIAS = '1W0nFPgV-GXMokG5fxnkT4TWGlwkCfk8Kt1CO02jhBG8';
 
 /* ---------- Menu na planilha ---------- */
 
@@ -176,7 +178,7 @@ function handle_(req) {
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
-    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto'];
+    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto', 'syncOcorrencia', 'removerOcorrencia'];
     if (writes.indexOf(req.action) !== -1) lock.waitLock(20000);
     try {
       switch (req.action) {
@@ -195,6 +197,8 @@ function handle_(req) {
           props.setProperty('DIRETORIA_KEY', nova);
           return json_({ ok: true });
         }
+        case 'syncOcorrencia': return json_({ ok: true, data: syncOcorrencia_(req.ocorrencia, req.pdf) });
+        case 'removerOcorrencia': removerOcorrencia_(req.id); return json_({ ok: true });
         case 'statusDiretoria': return json_({ ok: true, data: !!props.getProperty('DIRETORIA_KEY') });
         case 'getFotos': return json_({ ok: true, data: getFotos_(req.ids || []) });
         case 'replaceFrequencia': return json_({ ok: true, data: replaceFrequencia_(req.turma_id, req.datas || [], req.registros || []) });
@@ -460,4 +464,73 @@ function abrirDocumentoDiretoria_(id) {
     blob = file.getBlob();
   }
   return { nome: file.getName(), tipo: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
+}
+
+/* ---------- Ocorrências: planilha de controle + termo em PDF no Drive ---------- */
+const TIPO_PLANILHA_ = { OCORRENCIA: 'Ocorrência', ADV_VERBAL: 'Advertência', ADV_ESCRITA: 'Advertência', SUSPENSAO: 'Suspensão' };
+
+function abaOcorrencias_() {
+  const ss = SpreadsheetApp.openById(PLANILHA_OCORRENCIAS);
+  const sh = ss.getSheetByName('Ocorrências') || ss.getSheets()[0];
+  const topo = sh.getRange(1, 1, Math.min(15, sh.getMaxRows()), 1).getDisplayValues();
+  let cab = 0;
+  for (let i = 0; i < topo.length; i++) if (String(topo[i][0]).trim().toUpperCase() === 'REGISTRO') { cab = i + 1; break; }
+  if (!cab) throw new Error('Cabeçalho "REGISTRO" não encontrado na planilha de ocorrências.');
+  return { sh: sh, cab: cab };
+}
+
+/** Linha da ocorrência (pelo nº) ou a primeira linha livre abaixo do cabeçalho. */
+function linhaOcorrencia_(sh, cab, numero) {
+  const n = sh.getMaxRows() - cab;
+  const vals = sh.getRange(cab + 1, 1, n, 2).getDisplayValues();
+  let livre = 0;
+  for (let i = 0; i < vals.length; i++) {
+    if (numero && String(vals[i][0]).trim() === String(numero)) return { linha: cab + 1 + i, existe: true };
+    if (!livre && !String(vals[i][1]).trim()) livre = cab + 1 + i;
+  }
+  if (!livre) { sh.insertRowsAfter(sh.getMaxRows(), 50); livre = cab + 1 + n; }
+  return { linha: livre, existe: false };
+}
+
+function pastaTermos_() {
+  let base;
+  try { const ps = DriveApp.getFileById(PLANILHA_OCORRENCIAS).getParents(); base = ps.hasNext() ? ps.next() : DriveApp.getRootFolder(); } catch (e) { base = DriveApp.getRootFolder(); }
+  const it = base.getFoldersByName('Termos de Ocorrência');
+  return it.hasNext() ? it.next() : base.createFolder('Termos de Ocorrência');
+}
+
+/** Grava o termo em PDF no Drive e preenche/atualiza a linha da planilha de controle. */
+function syncOcorrencia_(o, pdf) {
+  if (!o || !o.id) throw new Error('Ocorrência inválida');
+  const atual = read_('Ocorrencias').filter(function (x) { return x.id === o.id; })[0] || {};
+  let termoId = atual.termo_id || '', link = atual.termo_link || '';
+  if (pdf) {
+    const m = String(pdf).match(/base64,(.*)$/);
+    const bytes = Utilities.base64Decode(m ? m[1] : pdf);
+    const nome = ('Termo ' + (o.numero || '').replace('/', '-') + ' - ' + (o.aluno_nome || '') + '.pdf').replace(/[\\/:*?"<>|]+/g, ' ');
+    if (termoId) { try { DriveApp.getFileById(termoId).setTrashed(true); } catch (e) { /* já removido */ } }
+    const f = pastaTermos_().createFile(Utilities.newBlob(bytes, 'application/pdf', nome));
+    termoId = f.getId(); link = f.getUrl();
+  }
+  const a = abaOcorrencias_();
+  const pos = linhaOcorrencia_(a.sh, a.cab, o.numero);
+  const partes = String(o.data_ocorrencia || '').split('-');
+  const data = partes.length === 3 ? new Date(+partes[0], +partes[1] - 1, +partes[2]) : '';
+  const primeiro = String(o.aluno_nome || '').trim().split(/\s+/)[0] || '';
+  a.sh.getRange(pos.linha, 1, 1, 5).setValues([[o.numero || '', TIPO_PLANILHA_[o.tipo] || 'Ocorrência', primeiro, data, link]]);
+  a.sh.getRange(pos.linha, 4).setNumberFormat('dd/mm/yyyy');
+  saveMany_('Ocorrencias', [{ id: o.id, termo_id: termoId, termo_link: link }]);
+  return { termo_id: termoId, termo_link: link, linha: pos.linha };
+}
+
+/** Ao excluir a ocorrência no sistema: limpa a linha da planilha e manda o termo para a lixeira. */
+function removerOcorrencia_(id) {
+  const o = read_('Ocorrencias').filter(function (x) { return x.id === String(id); })[0];
+  if (!o) return;
+  if (o.termo_id) { try { DriveApp.getFileById(o.termo_id).setTrashed(true); } catch (e) { /* já removido */ } }
+  try {
+    const a = abaOcorrencias_();
+    const pos = linhaOcorrencia_(a.sh, a.cab, o.numero);
+    if (pos.existe) a.sh.deleteRow(pos.linha);
+  } catch (e) { /* planilha indisponível: segue com a exclusão no sistema */ }
 }

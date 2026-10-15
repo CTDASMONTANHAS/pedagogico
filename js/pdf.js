@@ -813,6 +813,7 @@ const PDF = (() => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110);
     doc.text('Documento emitido em 2 (duas) vias: uma para o arquivo do Instituto e outra para o(a) responsável legal.', W / 2, y, { align: 'center' });
     doc.setTextColor(0);
+    if (o._base64) { drawLetterhead(doc); return doc.output('datauristring'); } // para guardar o termo no Drive
     save(doc, `Ocorrencia_${(o.numero || '').replace('/', '-')}_${o.aluno_nome || ''}`);
   }
 

@@ -38,7 +38,8 @@ routes.ocorrencias = () => {
         <td><span class="tag ${o.gravidade === 'GRAVE' ? 'bad' : o.gravidade === 'MEDIA' ? 'warn' : ''}">${esc(GRAV_OCOR[o.gravidade] || '')}</span></td>
         <td>${o.status === 'ABERTA' ? '<span class="flag amber">aguardando ciência</span>' : `<span class="tag ok">${o.status === 'CIENTE' ? 'responsável ciente' : 'encerrada'}</span>`}</td>
         <td class="row-actions"><button class="btn ghost small" data-action="editarOcorrencia" data-id="${o.id}">Editar</button>
-          <button class="btn primary small" data-action="pdfOcorrencia" data-id="${o.id}">Termo PDF</button></td></tr>`; }).join('')}
+          <button class="btn primary small" data-action="pdfOcorrencia" data-id="${o.id}">Termo PDF</button>
+          ${o.termo_link ? `<a class="btn ghost small" href="${esc(o.termo_link)}" target="_blank" rel="noopener" title="Termo guardado no Google Drive">Drive</a>` : `<button class="btn ghost small" data-action="planilhaOcorrencia" data-id="${o.id}" title="Preencher a planilha de controle">Planilha</button>`}</td></tr>`; }).join('')}
       </tbody></table></div>` : '<p class="empty">Nenhuma ocorrência registrada.</p>'}
     </section>`;
 };
@@ -93,14 +94,29 @@ function abrirOcorrencia(o) {
         await save('Alunos', Object.assign({}, a, { responsavel: a.responsavel || v.responsavel, telefone: a.telefone || v.telefone, data_nascimento: a.data_nascimento || v.data_nascimento }), true);
       }
       closeModal(); render();
+      await registrarNaPlanilha(rec);
       if (acao === 'pdf') await run(() => PDF.ocorrencia(rec), 'Gerando termo…');
     } catch (e) { /* toast já exibido */ }
   });
 }
 
+/** Guarda o termo em PDF no Drive e preenche a planilha de controle de ocorrências. */
+async function registrarNaPlanilha(rec) {
+  try {
+    const r = await run(async () => API.syncOcorrencia(rec, await PDF.ocorrencia(Object.assign({}, rec, { _base64: true }))), 'Registrando na planilha de controle…');
+    if (r) upsertLocal('Ocorrencias', Object.assign({ id: rec.id }, { termo_id: r.termo_id, termo_link: r.termo_link }));
+    toast('Ocorrência registrada na planilha de controle');
+    render();
+  } catch (e) { toast('Ocorrência salva, mas não foi possível preencher a planilha: ' + e.message, 'error'); }
+}
+
 actions.novaOcorrencia = el => abrirOcorrencia({ numero: proximoNumeroOcor(thisMonth().slice(0, 4)), aluno_id: el.dataset.aluno || '', turma_id: el.dataset.turma || '' });
 actions.editarOcorrencia = el => abrirOcorrencia(Object.assign({}, ocorrencia(el.dataset.id)));
-actions.excluirOcorrencia = el => confirmBox('Excluir este registro de ocorrência?', 'Excluir', () => remove('Ocorrencias', el.dataset.id));
+actions.excluirOcorrencia = el => confirmBox('Excluir este registro de ocorrência? A linha da planilha de controle também será removida e o termo irá para a lixeira do Drive.', 'Excluir', async () => {
+  try { await API.removerOcorrencia(el.dataset.id); } catch (e) { /* segue com a exclusão no sistema */ }
+  await remove('Ocorrencias', el.dataset.id);
+});
+actions.planilhaOcorrencia = el => registrarNaPlanilha(ocorrencia(el.dataset.id));
 actions.pdfOcorrencia = el => run(() => PDF.ocorrencia(ocorrencia(el.dataset.id)), 'Gerando termo…').catch(() => {});
 
 if (location.hash.startsWith('#ocorrencias') && !document.getElementById('app').classList.contains('hidden')) render();
