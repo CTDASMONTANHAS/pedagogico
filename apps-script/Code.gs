@@ -48,6 +48,8 @@ const SCHEMA = {
 const LAZY_ = { FotosDados: true };
 // Pasta do Google Drive do pedagógico onde ficam as fotos (uma subpasta por mês)
 const PASTA_FOTOS = '1eFKhRiSeZ9_Hrf_pFixBTqLAPYwFOEt5';
+// Pasta de documentos que a diretoria pode consultar (somente leitura, dentro do painel)
+const PASTA_DIRETORIA = '139uCJIGRFzMtCva95cFIFv33ZOn4EKTI';
 
 /* ---------- Menu na planilha ---------- */
 
@@ -157,10 +159,12 @@ function handle_(req) {
       return json_({ ok: false, error: 'Primeiro acesso: crie a senha do sistema.', semSenha: true });
     }
     // Painel da diretoria: senha própria, somente leitura
-    if (req.action === 'diretoria' || req.action === 'diretoriaFotos') {
+    if (req.action === 'diretoria' || req.action === 'diretoriaFotos' || req.action === 'diretoriaArquivos' || req.action === 'diretoriaArquivo') {
       const dk = props.getProperty('DIRETORIA_KEY');
       if (!dk) return json_({ ok: false, error: 'O acesso da diretoria ainda não foi liberado pela coordenação.' });
       if (req.key !== dk) return json_({ ok: false, error: 'Senha inválida', auth: false });
+      if (req.action === 'diretoriaArquivos') return json_({ ok: true, data: listarDocumentosDiretoria_() });
+      if (req.action === 'diretoriaArquivo') return json_({ ok: true, data: abrirDocumentoDiretoria_(req.id) });
       if (req.action === 'diretoriaFotos') {
         // só fotos de visitas às aulas
         const permitidas = {};
@@ -394,13 +398,66 @@ function dadosDiretoria_() {
   };
   return {
     Turmas: so(read_('Turmas'), ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'inicio']),
-    Alunos: so(read_('Alunos'), ['id', 'turma_id', 'nome', 'ativo', 'data_desligamento']),
-    Conferencias: so(read_('Conferencias'), ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada', 'fechamento_mensal']),
+    Alunos: so(read_('Alunos'), ['id', 'turma_id', 'nome', 'ativo', 'data_desligamento', 'motivo_desligamento']),
+    Contatos: so(read_('Contatos'), ['id', 'aluno_id', 'data', 'alerta', 'resultado']),
+    Conferencias: so(read_('Conferencias'), ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada', 'fechamento_mensal', 'observacoes']),
     Frequencia: so(read_('Frequencia'), ['turma_id', 'aluno_id', 'data', 'status']),
     Reunioes: read_('Reunioes'),
-    Ocorrencias: so(read_('Ocorrencias'), ['id', 'turma_id', 'data_ocorrencia', 'tipo']),
+    Ocorrencias: so(read_('Ocorrencias'), ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_ocorrencia', 'local',
+      'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao']),
     Visitas: read_('Visitas'),
     Fotos: so(read_('Fotos').filter(function (f) { return f.visita_id; }),
       ['id', 'tipo', 'turma_id', 'visita_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'ordem']),
   };
+}
+
+/* ---------- Documentos da diretoria (pasta do Drive, somente leitura) ---------- */
+function listarDocumentosDiretoria_() {
+  const raiz = DriveApp.getFolderById(PASTA_DIRETORIA);
+  const out = [];
+  const percorre = function (pasta, caminho, nivel) {
+    const fs = pasta.getFiles();
+    while (fs.hasNext() && out.length < 800) {
+      const f = fs.next();
+      out.push({ id: f.getId(), nome: f.getName(), tipo: f.getMimeType(), pasta: caminho, tamanho: f.getSize(),
+        modificado: Utilities.formatDate(f.getLastUpdated(), 'America/Sao_Paulo', 'yyyy-MM-dd') });
+    }
+    if (nivel >= 6) return;
+    const ps = pasta.getFolders();
+    while (ps.hasNext()) { const p = ps.next(); percorre(p, caminho ? caminho + ' / ' + p.getName() : p.getName(), nivel + 1); }
+  };
+  percorre(raiz, '', 0);
+  return { pasta: raiz.getName(), arquivos: out };
+}
+
+/** Só entrega arquivos que estão dentro da pasta da diretoria (em qualquer subpasta). */
+function dentroDaPastaDiretoria_(file) {
+  let fila = [];
+  const ps = file.getParents();
+  while (ps.hasNext()) fila.push(ps.next());
+  for (let nivel = 0; nivel < 8 && fila.length; nivel++) {
+    const prox = [];
+    for (let i = 0; i < fila.length; i++) {
+      if (fila[i].getId() === PASTA_DIRETORIA) return true;
+      const pp = fila[i].getParents();
+      while (pp.hasNext()) prox.push(pp.next());
+    }
+    fila = prox;
+  }
+  return false;
+}
+
+function abrirDocumentoDiretoria_(id) {
+  const file = DriveApp.getFileById(String(id || ''));
+  if (!dentroDaPastaDiretoria_(file)) throw new Error('Arquivo não disponível.');
+  const tipo = file.getMimeType();
+  let blob;
+  if (tipo.indexOf('application/vnd.google-apps.') === 0) {
+    if (tipo === 'application/vnd.google-apps.folder' || tipo === 'application/vnd.google-apps.shortcut') throw new Error('Arquivo não disponível.');
+    blob = file.getAs('application/pdf'); // Documentos, Planilhas e Apresentações Google viram PDF para leitura
+  } else {
+    if (file.getSize() > 30 * 1024 * 1024) throw new Error('Arquivo grande demais para abrir no painel (acima de 30 MB).');
+    blob = file.getBlob();
+  }
+  return { nome: file.getName(), tipo: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
 }

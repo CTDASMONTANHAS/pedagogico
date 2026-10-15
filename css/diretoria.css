@@ -57,5 +57,32 @@ body { background: var(--bg); color: var(--text); margin: 0; }
 .dir-fotos figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .foto-mini img { cursor: zoom-in; }
 @media (max-width: 760px) { .dir-nav { padding: 0 8px; } .dir-doc dl { grid-template-columns: 1fr; } }
+/* relatórios e arquivos */
+.dir-docs-busca { max-width: 260px; }
+.dir-docs-rel { margin: 6px 0 8px; font-size: 13px; color: var(--muted); }
+.dir-docs-grupo h4 { margin: 14px 0 8px; font-size: 13px; color: var(--muted); }
+.dir-docs-btns { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.dir-doc-btn { display: grid; grid-template-columns: 46px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; cursor: pointer; color: var(--text); font: inherit; }
+.dir-doc-btn:hover { border-color: var(--accent); }
+.dir-doc-ico { grid-row: 1 / span 2; font-size: 10px; font-weight: 700; text-align: center; padding: 10px 0; border-radius: 6px; color: #fff; background: #8a8a85; }
+.dir-doc-ico.pdf { background: #c0392b; } .dir-doc-ico.plan { background: #1e7b45; } .dir-doc-ico.doc { background: #2b5797; }
+.dir-doc-ico.apres { background: #d35400; } .dir-doc-ico.img { background: #7b5cc4; } .dir-doc-ico.midia { background: #444; }
+.dir-doc-nome { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-doc-btn small { color: var(--muted); font-size: 11px; }
+#dirDocs { margin-top: 18px; }
+/* visualizador */
+.dir-visor { position: fixed; inset: 0; z-index: 95; background: var(--bg); display: none; flex-direction: column; user-select: none; }
+.dir-visor.aberto { display: flex; }
+.dir-visor-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.dir-visor-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-visor-corpo { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.dir-visor-corpo canvas, .dir-visor-corpo img, .dir-visor-corpo video { max-width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,.25); background: #fff; }
+.dir-visor-msg { color: var(--muted); text-align: center; margin: 24px 0; }
+.dir-visor-txt { white-space: pre-wrap; max-width: 1000px; width: 100%; background: var(--surface); padding: 16px; border-radius: 8px; }
+.dir-visor-docx { width: 100%; max-width: 1000px; background: #fff; color: #000; }
+.dir-visor-plan { width: 100%; overflow: auto; background: #fff; color: #000; }
+.dir-visor-plan table { border-collapse: collapse; font-size: 12px; } .dir-visor-plan td { border: 1px solid #ccc; padding: 3px 6px; }
+.dir-visor-aba { align-self: flex-start; margin: 8px 0 0; }
 /* painel somente para consulta na tela: impressão desativada */
 @media print { body { display: none !important; } }
