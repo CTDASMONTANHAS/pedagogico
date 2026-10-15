@@ -280,7 +280,7 @@ const PDF = (() => {
     return y + Math.ceil(itens.length / cols) * (bh + gap) + 8;
   }
 
-  async function relPedagogico(tipo, ref) {
+  async function relPedagogico(tipo, ref, comFotos) {
     const P = periodoRelatorio(tipo, ref);
     const { meses, de, ate } = P;
     const ultimo = meses[meses.length - 1];
@@ -454,8 +454,217 @@ const PDF = (() => {
         styles: { fontSize: 7.8 }, columnStyles: { 4: { halign: 'center' }, 5: { halign: 'center' } },
       });
     } else y = paragraph(doc, y, 'Nenhum evento cadastrado no período.', { size: 9 });
+    if (comFotos) y = await registroFotos(doc, y, fotosFiltro({ de, ate }), '7. Registro fotográfico', 24);
     signature(doc, y);
     save(doc, `Relatorio_pedagogico_${tipo}_${P.nome}`);
+  }
+
+  /* ---------- Registro fotográfico (usado por vários relatórios) ---------- */
+  async function registroFotos(doc, y, lista, titulo, max) {
+    if (!lista.length) return y;
+    const sel = max ? lista.slice(0, max) : lista;
+    let imgs = {};
+    try { imgs = await Fotos.carregar(sel.map(f => f.id)); } catch (e) { /* usa as miniaturas */ }
+    const W = doc.internal.pageSize.getWidth(), gap = 6, cw = (W - 2 * M - gap) / 2, hmax = 62;
+    y = ensure(doc, y, hmax + 26); // título junto com a primeira linha de fotos
+    y = section(doc, y, titulo + (max && lista.length > max ? ` (${max} de ${lista.length} fotos)` : ''));
+    let col = 0, linhaH = 0;
+    for (const f of sel) {
+      const url = imgs[f.id] || f.miniatura;
+      const iw = +f.largura || 4, ih = +f.altura || 3;
+      let w = cw, h = cw * ih / iw;
+      if (h > hmax) { h = hmax; w = h * iw / ih; }
+      const leg = doc.setFont('helvetica', 'normal').setFontSize(7.5).splitTextToSize(legendaFoto(f), cw);
+      const bloco = hmax + 3 + leg.length * 3.3 + 4;
+      if (col === 0) { const ny = ensure(doc, y, bloco); y = ny; linhaH = 0; }
+      const x0 = M + col * (cw + gap);
+      doc.setFillColor(245, 245, 245); doc.rect(x0, y, cw, hmax, 'F');
+      try { doc.addImage(url, 'JPEG', x0 + (cw - w) / 2, y + (hmax - h) / 2, w, h); } catch (e) { /* imagem inválida */ }
+      doc.setTextColor(70); doc.text(leg, x0, y + hmax + 3.5); doc.setTextColor(0);
+      linhaH = Math.max(linhaH, bloco);
+      col++;
+      if (col === 2) { col = 0; y += linhaH; }
+    }
+    if (col) y += linhaH;
+    return y + 2;
+  }
+
+  /* ---------- Avaliação dos professores ---------- */
+  async function relAvaliacao(tipo, ref, nome) {
+    const { P, lista: todos } = avaliacaoProfessores(tipo, ref);
+    const lista = nome ? todos.filter(x => x.p.nome === nome) : todos;
+    const TIPOS = { mensal: 'Mensal', trimestral: 'Trimestral', semestral: 'Semestral', anual: 'Anual' };
+    const { doc, y: y0 } = await create(nome ? 'Ficha de Avaliação do Professor' : `Avaliação dos Professores — ${TIPOS[tipo]}`, [nome || 'Indicadores de desempenho pedagógico', P.nome]);
+    let y = y0;
+    const corN = n => n == null ? [120, 120, 120] : n >= 70 ? [42, 143, 87] : n >= 50 ? [190, 130, 20] : [208, 68, 62];
+    const fmtP = v => v == null ? '—' : v + '%';
+    y = paragraph(doc, y, `Critérios: conferência pedagógica (itens em dia; parcial vale meio) ${PESOS_AVAL.conf}%, frequência média das turmas ${PESOS_AVAL.freq}%, permanência dos alunos (100% - evasão) ${PESOS_AVAL.ret}% e reuniões mensais realizadas ${PESOS_AVAL.reun}%. Nota: 85+ Excelente · 70+ Bom · 50+ Regular · abaixo de 50 Atenção.`, { size: 8.5 });
+    if (!nome) {
+      const com = lista.filter(x => x.nota != null);
+      y = caixas(doc, y, [
+        { valor: lista.length, rotulo: 'professores avaliados' },
+        { valor: com.length ? Math.round(com.reduce((s, x) => s + x.nota, 0) / com.length) : '—', rotulo: 'nota média da equipe' },
+        { valor: com.filter(x => x.nota >= 70).length, rotulo: 'com nota Bom ou Excelente', cor: [42, 143, 87] },
+        { valor: com.filter(x => x.nota < 50).length, rotulo: 'em atenção (abaixo de 50)', cor: [208, 68, 62] },
+      ]);
+      if (com.length) {
+        y = grafico(doc, y, 'Nota por professor', {
+          type: 'bar', data: { labels: com.map(x => x.p.nome.split(' ').slice(0, 2).join(' ')), datasets: [{ data: com.map(x => x.nota), backgroundColor: com.map(x => x.nota >= 70 ? COR.ok : x.nota >= 50 ? COR.warn : COR.bad) }] },
+          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 100 } } },
+        }, Math.max(220, com.length * 34 + 60), [rotulos('')]);
+      }
+      y = section(doc, y, 'Quadro de indicadores');
+      y = table(doc, y, {
+        head: [['Professor(a)', 'Turmas', 'Conferência', 'Frequência', 'Evasão', 'Reuniões', 'Nota', 'Nível']],
+        body: lista.map(x => [x.p.nome, x.turmas.map(t => shortName(t.nome)).join(', '), fmtP(x.conf), fmtP(x.freq), fmtP(x.evasao), `${x.reunFeitas}/${x.mesesProf.length}`, x.nota ?? '—', x.nivel[1]]),
+        styles: { fontSize: 7.6 }, columnStyles: { 1: { cellWidth: 46 }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' }, 7: { halign: 'center' } },
+        didParseCell: d => { if (d.section === 'body' && d.column.index >= 6) d.cell.styles.textColor = corN(lista[d.row.index].nota); },
+      });
+    }
+    for (const x of (nome ? lista : [])) {
+      y = caixas(doc, y, [
+        { valor: x.nota ?? '—', rotulo: `nota no período — ${x.nivel[1]}`, cor: corN(x.nota) },
+        { valor: fmtP(x.conf), rotulo: `conferência em dia (${x.conferidos}/${x.celulas} itens conferidos)` },
+        { valor: fmtP(x.freq), rotulo: `frequência média (${x.aulas} aulas registradas)` },
+        { valor: fmtP(x.evasao), rotulo: `evasão (${x.deslig.length} desligado(s) / ${x.ativos} ativos)`, cor: x.evasao > 25 ? [208, 68, 62] : undefined },
+        { valor: `${x.reunFeitas}/${x.mesesProf.length}`, rotulo: 'reuniões mensais realizadas' },
+        { valor: x.alertas.length, rotulo: 'alunos em alerta de faltas hoje', cor: x.alertas.length ? [190, 130, 20] : undefined },
+        { valor: x.ocorr.length, rotulo: 'ocorrências registradas no período' },
+        { valor: x.turmas.length, rotulo: 'turmas no período' },
+      ]);
+      y = section(doc, y, 'Turmas');
+      y = table(doc, y, {
+        head: [['Turma', 'Área', 'Aulas', 'Frequência', 'Alunos ativos', 'Desligados no período']],
+        body: x.turmas.map(t => { const s = statsTurma(t.id, P.de, P.ate); return [t.nome, AREAS[t.area], s.aulas, fmtP(s.pct), alunosDaTurma(t.id).length, x.deslig.filter(a => a.turma_id === t.id).length]; }),
+        styles: { fontSize: 8 }, columnStyles: { 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' } },
+      });
+      y = section(doc, y, 'Conferência pedagógica — pendências');
+      y = x.pendencias.length ? table(doc, y, {
+        head: [['Mês', 'Turma', 'Item', 'Situação']], body: x.pendencias.map(d => [fmtMonth(d.mes), d.turma.nome, d.item, CONF_STATUS[d.status].label]), styles: { fontSize: 8 },
+      }) : paragraph(doc, y, 'Nenhuma pendência nos meses conferidos.', { size: 9 });
+      if (x.alertas.length) {
+        y = section(doc, y, 'Alunos com faltas consecutivas');
+        y = table(doc, y, { head: [['Aluno(a)', 'Turma', 'Faltas seguidas', 'Desde']], body: x.alertas.map(a => [a.aluno.nome, a.turma.nome, a.stats.seqAtual, fmtDate(a.desde)]), styles: { fontSize: 8 } });
+      }
+      y = section(doc, y, 'Pontos para a reunião mensal');
+      const pts = [];
+      if (x.conf != null && x.conf < 85) pts.push(`Regularizar a documentação da conferência (${x.pendencias.length} item(ns) parcial(is) ou pendente(s)).`);
+      if (x.freq != null && x.freq < 75) pts.push(`Frequência média de ${x.freq}%: discutir estratégias de engajamento e contato com faltosos.`);
+      if (x.evasao != null && x.evasao > 15) pts.push(`Evasão de ${x.evasao}% no período: levantar motivos das saídas e ações de permanência.`);
+      if (x.alertas.length) pts.push(`${x.alertas.length} aluno(s) com faltas consecutivas: alinhar contato com a secretaria.`);
+      if (x.reun != null && x.reun < 100) pts.push('Manter a regularidade das reuniões mensais.');
+      if (!pts.length) pts.push('Indicadores satisfatórios no período: reconhecer o trabalho e manter as boas práticas.');
+      pts.forEach(t => { y = paragraph(doc, y, '• ' + t, { size: 9.5 }); });
+    }
+    signature(doc, y);
+    save(doc, nome ? `Avaliacao_${nome}_${P.nome}` : `Avaliacao_professores_${P.nome}`);
+  }
+
+  /* ---------- Prestação de contas ---------- */
+  async function relPrestacao(o) {
+    const d = dadosPrestacao(o);
+    const per = `${fmtDate(o.de)} a ${fmtDate(o.ate)}`;
+    const { doc, y: y0 } = await create('Relatório de Prestação de Contas — Execução do Objeto', [o.projeto || 'Projeto', `Período de execução: ${per}`]);
+    let y = y0;
+    y = section(doc, y, '1. Identificação');
+    y = table(doc, y, {
+      body: [
+        ['Proponente', 'Instituto Três Pontões de Ação Social e Cultural — Instituto Cultural das Montanhas'], ['CNPJ', '51.892.817/0001-52'],
+        ['Projeto', o.projeto || '—'], ...(o.processo ? [['Nº do processo / termo', o.processo]] : []),
+        ['Área', o.area ? AREAS[o.area] : 'Música e Esporte'], ['Período', per],
+        ['Núcleos / turmas', d.ts.map(t => t.nome).join('; ')],
+      ], theme: 'grid', styles: { fontSize: 8.5 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 42, fillColor: [235, 240, 246] } },
+    });
+    // metas
+    const pctExec = (r, p) => (p ? Math.round(100 * r / p) + '%' : '—');
+    const n1 = v => v == null ? '—' : (Math.round(v * 10) / 10).toLocaleString('pt-BR');
+    const metas = [
+      ['Beneficiários atendidos (alunos com presença)', o.metaBenef || d.total.vagas, d.total.benef],
+      ['Aulas / atividades realizadas', o.metaAulas || d.total.aulasPrev, d.total.aulas],
+      ['Carga horária executada (horas)', o.metaCH || d.total.chPrev, d.total.ch],
+      ['Eventos / apresentações', o.metaEventos || null, d.eventos.length],
+      ['Frequência média dos alunos (%)', o.metaFreq || 75, d.total.freq],
+    ];
+    y = section(doc, y, '2. Metas previstas e realizadas');
+    y = table(doc, y, {
+      head: [['Meta / indicador', 'Previsto', 'Realizado', '% de execução']],
+      body: metas.map(([l, p, r]) => [l, p == null ? '—' : n1(+p), r == null ? '—' : n1(r), p && r != null ? pctExec(r, +p) : '—']),
+      styles: { fontSize: 8.5 }, columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center', fontStyle: 'bold' } },
+      didParseCell: c => { if (c.section === 'body' && c.column.index === 3 && c.cell.raw !== '—') { const v = parseInt(c.cell.raw, 10); c.cell.styles.textColor = v >= 100 ? [20, 110, 50] : v >= 75 ? [170, 110, 0] : [180, 30, 30]; } },
+    });
+    y = paragraph(doc, y, 'Previsto: metas informadas para o projeto ou, na falta delas, as metas cadastradas nas turmas (vagas, aulas previstas por mês e duração da aula). Realizado: apurado pelos registros de chamada do sistema.', { size: 7.8 });
+    const comMeta = metas.filter(([, p, r]) => p && r != null);
+    if (comMeta.length) {
+      y = grafico(doc, y, '% de execução das metas', {
+        type: 'bar', data: { labels: comMeta.map(([l]) => l.split(' (')[0]), datasets: [{ data: comMeta.map(([, p, r]) => Math.round(100 * r / p)), backgroundColor: comMeta.map(([, p, r]) => r / p >= 1 ? COR.ok : r / p >= 0.75 ? COR.warn : COR.bad) }] },
+        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, suggestedMax: 120 } } },
+      }, 60 + comMeta.length * 46, [rotulos('%')]);
+    }
+    y = section(doc, y, '3. Execução por turma');
+    y = table(doc, y, {
+      head: [['Turma', 'Vagas', 'Atendidos', 'Aulas prev.', 'Aulas real.', 'CH (h)', 'Freq.']],
+      body: d.porTurma.map(x => [x.t.nome, x.vagas ?? '—', x.atendidos.length, x.aulasPrev ?? '—', x.aulas, x.ch == null ? '—' : n1(x.ch), x.freq == null ? '—' : x.freq + '%']),
+      foot: [['Total', d.total.vagas ?? '—', d.total.benef, d.total.aulasPrev ?? '—', d.total.aulas, d.total.ch == null ? '—' : n1(d.total.ch), d.total.freq == null ? '—' : d.total.freq + '%']],
+      footStyles: { fillColor: [235, 240, 246], textColor: 20, fontStyle: 'bold' },
+      styles: { fontSize: 7.8 }, columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' } },
+    });
+    if (d.mensal.length > 1) {
+      y = grafico(doc, y, 'Execução mensal: aulas realizadas e beneficiários', {
+        type: 'bar', data: { labels: d.mensal.map(x => fmtMonthShort(x.m)), datasets: [
+          { label: 'Aulas realizadas', data: d.mensal.map(x => x.aulas), backgroundColor: COR.azul },
+          { label: 'Beneficiários com presença', data: d.mensal.map(x => x.benef), backgroundColor: COR.musica }] },
+        options: { plugins: { legend: { position: 'bottom' } } },
+      }, 330);
+    }
+    y = section(doc, y, '4. Perfil dos beneficiários');
+    y = paragraph(doc, y, `${d.total.benef} beneficiário(s) direto(s) no período. ${d.total.desligados} desligamento(s) registrado(s).`, { size: 9 });
+    const pizza = (titulo, obj) => {
+      const ks = Object.keys(obj).sort((a, b) => (a === 'Não informado') - (b === 'Não informado') || obj[b] - obj[a]);
+      const cores = ['#1a3a5c', '#7b5cc4', '#2a8f57', '#e0a526', '#d0443e', '#4aa3c9', '#a0522d', '#888', '#c9c9c9'];
+      return grafico(doc, y, titulo, {
+        type: 'doughnut', data: { labels: ks.map(k => `${k}: ${obj[k]}`), datasets: [{ data: ks.map(k => obj[k]), backgroundColor: ks.map((k, i) => k === 'Não informado' ? '#d5d5d5' : cores[i % cores.length]) }] },
+        options: { plugins: { legend: { position: 'right', labels: { font: { size: 15 } } } }, cutout: '50%' },
+      }, 250);
+    };
+    const ordemIdade = FAIXAS_IDADE.map(f => f[2]).concat('Não informado');
+    const idades = ordemIdade.filter(k => d.perfil.idade[k]);
+    if (idades.length) {
+      y = grafico(doc, y, 'Faixa etária', {
+        type: 'bar', data: { labels: idades, datasets: [{ data: idades.map(k => d.perfil.idade[k]), backgroundColor: idades.map(k => k === 'Não informado' ? COR.none : COR.azul) }] },
+        options: { plugins: { legend: { display: false } } },
+      }, 260, [rotulos('')]);
+    }
+    if (Object.keys(d.perfil.area).length > 1) y = pizza('Por área', d.perfil.area);
+    y = pizza('Sexo', d.perfil.sexo);
+    y = pizza('Tipo de escola', d.perfil.escola);
+    const bairros = Object.entries(d.perfil.bairro).sort((a, b) => (a[0] === 'Não informado') - (b[0] === 'Não informado') || b[1] - a[1]);
+    y = section(doc, y, 'Bairro / localidade de residência');
+    y = table(doc, y, { head: [['Bairro / localidade', 'Beneficiários', '%']], body: bairros.map(([k, v]) => [k, v, Math.round(100 * v / Math.max(1, d.total.benef)) + '%']), styles: { fontSize: 8 }, columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' } } });
+    const naoInf = ['idade', 'sexo', 'escola', 'bairro'].filter(k => d.perfil[k]['Não informado']);
+    if (naoInf.length) y = paragraph(doc, y, 'Observação: parte dos cadastros ainda não tem idade, sexo, tipo de escola ou bairro informados (campo "Não informado"). Complete os dados em Turmas e alunos para um perfil completo.', { size: 7.8 });
+    y = section(doc, y, `5. Eventos e apresentações: ${d.eventos.length}`);
+    y = d.eventos.length ? table(doc, y, {
+      head: [['Data', 'Evento', 'Local', 'Participantes']],
+      body: d.eventos.map(e => [fmtDate(e.data_evento), e.nome, [e.municipio, e.local].filter(Boolean).join(' — '), participantesEvento(e.id).length]),
+      styles: { fontSize: 8 }, columnStyles: { 3: { halign: 'center' } },
+    }) : paragraph(doc, y, 'Nenhum evento registrado no período.', { size: 9 });
+    if (o.obs) { y = section(doc, y, '6. Considerações'); y = paragraph(doc, y, o.obs, { size: 9.5 }); }
+    if (o.fotos) y = await registroFotos(doc, y, fotosFiltro({ turmas: o.turmas, de: o.de, ate: o.ate, area: o.area }), `${o.obs ? 7 : 6}. Registro fotográfico (comprovação)`);
+    signature(doc, y, 'Responsável pelo projeto');
+    save(doc, `Prestacao_de_contas_${o.projeto || ''}_${o.de}_${o.ate}`);
+  }
+
+  /* ---------- Relatório fotográfico / de visitas ---------- */
+  async function relFotografico(o) {
+    const lista = o.evento ? fotosFiltro({ evento: o.evento }) : fotosFiltro({ turmas: o.turma ? [o.turma] : null, de: o.de, ate: o.ate, tipo: o.tipo, area: o.area });
+    const t = turma(o.turma), e = DB.Eventos.find(x => x.id === o.evento);
+    const titulo = o.tipo === 'VISITA' ? 'Relatório de Visitas' : 'Relatório Fotográfico';
+    const { doc, y: y0 } = await create(titulo, [e ? e.nome : t ? t.nome : (o.area ? AREAS[o.area] : 'Música e Esporte'), (o.de || o.ate) ? `Período: ${o.de ? fmtDate(o.de) : 'início'} a ${o.ate ? fmtDate(o.ate) : 'hoje'}` : '']);
+    let y = y0;
+    if (o.texto) { y = section(doc, y, 'Relato'); y = paragraph(doc, y, o.texto, { size: 9.5 }); }
+    y = lista.length ? await registroFotos(doc, y, lista, `Registro fotográfico — ${lista.length} foto(s)`) : paragraph(doc, y, 'Nenhuma foto encontrada com esses filtros.', { size: 9.5 });
+    signature(doc, y);
+    save(doc, `${titulo.replace(/ /g, '_')}_${e ? e.nome : t ? t.nome : ''}_${todayISO()}`);
   }
 
   /** Termo formal de ocorrência / advertência disciplinar. */
@@ -618,7 +827,7 @@ const PDF = (() => {
   }
 
   /** Conferência de uma turma: mês a mês, com resumo, assiduidade e observações. */
-  async function relConferenciaTurma(tid, ano) {
+  async function relConferenciaTurma(tid, ano, comFotos) {
     const t = turma(tid);
     const atual = thisMonth();
     const ate = ano === atual.slice(0, 4) ? atual : `${ano}-12`;
@@ -670,6 +879,7 @@ const PDF = (() => {
       y = paragraph(doc, y, `Alunos ativos: ${al.length}. Alunos com 2 faltas seguidas: ${alr.filter(x => x.nivel === 2).length}. Aptos a desligamento (3+ faltas seguidas): ${alr.filter(x => x.nivel === 3).length}.`, { size: 9 });
     }
     y = paragraph(doc, y, 'Legenda: Em dia · Parcial (aula sem registro) · Pendente · — (não conferido). Assiduidade calculada a partir dos relatórios de presença importados.', { size: 8 });
+    if (comFotos) y = await registroFotos(doc, y, fotosFiltro({ turmas: [tid], de: `${ano}-01-01`, ate: `${ano}-12-31` }).filter(f => f.turma_id === tid), 'Registro fotográfico da turma');
     signature(doc, y);
     save(doc, `Conferencia_${t.nome}_${ano}`);
   }
@@ -907,7 +1117,7 @@ const PDF = (() => {
     ].filter(r => r[1]);
   }
 
-  async function eventoLista(eid) {
+  async function eventoLista(eid, comFotos) {
     const e = DB.Eventos.find(x => x.id === eid);
     const parts = participantesEvento(eid);
     const { doc, y: y0 } = await create('Relação de Participantes e Documentação', [`${e.nome} — ${e.municipio || ''}`, `Data: ${fmtDate(e.data_evento)}`]);
@@ -933,6 +1143,7 @@ const PDF = (() => {
       y = section(doc, y, 'Documentação pendente');
       y = table(doc, y, { head: [['Aluno(a)', 'Responsável / Telefone', 'Faltando']], body: pend.map(p => [p.aluno.nome, [p.aluno.responsavel, p.aluno.telefone].filter(Boolean).join(' · '), docs.filter(([k]) => !isTrue(p.part[k])).map(([, l]) => l).join(', ')]), styles: { fontSize: 8 } });
     }
+    if (comFotos) y = await registroFotos(doc, y, fotosFiltro({ evento: eid }), 'Registro fotográfico do evento');
     signature(doc, y);
     save(doc, `Evento_${e.nome}_participantes`);
   }
@@ -995,7 +1206,7 @@ const PDF = (() => {
     save(doc, `Turmas_e_alunos_${areaTxt(area)}`);
   }
 
-  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
+  return { setAssinante, conferencia: relConferencia, conferenciaAnual: relConferenciaAnual, conferenciaTurma: relConferenciaTurma, ata: relAta, desligados: relDesligados, pedagogico: relPedagogico, ocorrencia: relOcorrencia, avaliacao: relAvaliacao, prestacao: relPrestacao, fotografico: relFotografico, periodoRelatorio, frequenciaTurma, assiduidadeGeral, alertas, eventoLista, autorizacoes, turmasAlunos };
 })();
 
 /* Compartilhados entre tela e PDF */

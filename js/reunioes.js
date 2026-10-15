@@ -147,6 +147,7 @@ function abrirAta(r) {
       <label class="field">Redator(a)<input name="redator" value="${esc(r.redator || (assin[0] && assin[0].nome) || '')}"></label>
       <label class="field full">Assunto da reunião<input name="assunto" value="${esc(r.assunto || (quem && quem.funcao === 'Secretaria' ? 'Reunião mensal com a secretaria' : quem && quem.funcao === 'Responsável pela van' ? 'Reunião mensal sobre o transporte (van)' : 'Reunião pedagógica mensal'))}"></label>
     </div>
+    <div id="ataInd">${typeof painelIndicadoresAta === 'function' ? painelIndicadoresAta(r.professor, (r.data || todayISO()).slice(0, 7)) : ''}</div>
     <h4>Participantes <small class="muted">(marque quem assina a ata)</small></h4>
     <div id="ataParts">${parts.map(linhaParticipante).join('')}</div>
     <button type="button" class="btn ghost small" data-action="ataAddPart">+ Participante</button>
@@ -164,6 +165,9 @@ function abrirAta(r) {
       <button type="submit" class="btn primary" name="acao" value="salvar">Salvar</button></div>
   </form>`, true);
   const f = $('#ataForm');
+  const atualizaInd = () => { $('#ataInd').innerHTML = painelIndicadoresAta(f.professor.value, (f.data.value || todayISO()).slice(0, 7)); };
+  f.professor.addEventListener('change', atualizaInd);
+  f.data.addEventListener('change', atualizaInd);
   f.addEventListener('submit', async ev => {
     ev.preventDefault();
     const acao = ev.submitter ? ev.submitter.value : 'salvar';

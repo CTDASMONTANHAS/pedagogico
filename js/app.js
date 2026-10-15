@@ -208,12 +208,19 @@ const TURMA_FIELDS = [
   { name: 'dias_horario', label: 'Dias e horário', placeholder: 'Ex.: Ter e Qui, 14h–15h30' },
   { name: 'local', label: 'Local' },
   { name: 'inicio', label: 'Mês de início da turma/projeto', type: 'month', hint: 'Meses anteriores não entram na conferência' },
+  { name: 'meta_alunos', label: 'Vagas / meta de alunos', type: 'number', hint: 'Usado na prestação de contas' },
+  { name: 'aulas_previstas_mes', label: 'Aulas previstas por mês', type: 'number' },
+  { name: 'duracao_aula', label: 'Duração de cada aula (horas)', type: 'number', placeholder: 'Ex.: 1.5', hint: 'Para calcular a carga horária' },
 ];
 const ALUNO_FIELDS = [
   { name: 'nome', label: 'Nome completo', required: true, full: true },
   { name: 'data_nascimento', label: 'Data de nascimento', type: 'date' },
   { name: 'responsavel', label: 'Responsável' },
   { name: 'telefone', label: 'Telefone', placeholder: '(27) 9 9999-9999' },
+  { name: 'sexo', label: 'Sexo', type: 'select', options: [['', '—'], ['Feminino', 'Feminino'], ['Masculino', 'Masculino'], ['Não informado', 'Prefere não informar']] },
+  { name: 'bairro', label: 'Bairro / localidade' },
+  { name: 'escola', label: 'Escola' },
+  { name: 'tipo_escola', label: 'Tipo de escola', type: 'select', options: [['', '—'], ['Pública municipal', 'Pública municipal'], ['Pública estadual', 'Pública estadual'], ['Particular', 'Particular'], ['Não estuda', 'Não estuda']] },
 ];
 
 routes.turmas = () => {
@@ -727,9 +734,32 @@ routes.relatorios = () => {
       <label>Período<select name="tipo" data-change="periodoPed"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option></select></label>
       <label>Mês de referência<input type="month" name="ref" value="${thisMonth()}" class="input" data-change="periodoPed"></label>
       <p class="muted small" id="periodoPedTxt">${PDF.periodoRelatorio('mensal', thisMonth()).nome}</p>
+      <label class="check"><input type="checkbox" name="fotos"> incluir registro fotográfico</label>
+      <button class="btn primary">Gerar PDF</button></form>
+    <form class="card report report-destaque" data-report="prestacao"><h3>Prestação de contas — execução do objeto</h3><p class="muted small">Para Lei de Incentivo ao Esporte e editais de cultura: metas previstas × realizadas (beneficiários, aulas, carga horária, eventos, frequência), execução por turma e por mês, perfil dos atendidos, eventos e registro fotográfico.</p>
+      <div class="row2"><label>Nome do projeto<input name="projeto" class="input" placeholder="Ex.: Orquestra Jônice Tristão 2026"></label><label>Nº do processo / termo<input name="processo" class="input"></label></div>
+      <div class="row2"><label>De<input type="date" name="de" class="input" value="${thisMonth().slice(0, 4)}-01-01" required></label><label>Até<input type="date" name="ate" class="input" value="${todayISO()}" required></label></div>
+      <label>Área${areaSel('area')}</label>
+      <label>Turmas do projeto <small>(Ctrl para marcar várias; nenhuma = todas da área)</small><select name="turmas" multiple size="5">${turmaOptions('')}</select></label>
+      <p class="muted small">Metas previstas (em branco = soma das metas cadastradas nas turmas):</p>
+      <div class="row2"><label>Beneficiários<input type="number" name="metaBenef" class="input"></label><label>Aulas<input type="number" name="metaAulas" class="input"></label></div>
+      <div class="row2"><label>Carga horária (h)<input type="number" name="metaCH" class="input"></label><label>Eventos<input type="number" name="metaEventos" class="input"></label></div>
+      <label>Frequência mínima (%)<input type="number" name="metaFreq" class="input" value="75"></label>
+      <label>Considerações (opcional)<textarea name="obs" rows="2" class="input"></textarea></label>
+      <label class="check"><input type="checkbox" name="fotos" checked> incluir registro fotográfico</label>
+      <button class="btn primary">Gerar PDF</button></form>
+    <form class="card report" data-report="avaliacao"><h3>Avaliação dos professores</h3><p class="muted small">Nota por professor: conferência, frequência das turmas, evasão e reuniões. Detalhes em <a href="#avaliacao">Avaliação dos professores</a>.</p>
+      <label>Período<select name="tipo"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option></select></label>
+      <label>Mês de referência<input type="month" name="ref" value="${thisMonth()}" class="input"></label><button class="btn primary">Gerar PDF</button></form>
+    <form class="card report" data-report="fotografico"><h3>Relatório fotográfico / de visitas</h3><p class="muted small">Fotos com data e legenda, duas por linha, com relato opcional. Cadastre as fotos em <a href="#fotos">Fotos e evidências</a>.</p>
+      <label>Tipo<select name="tipo"><option value="">Todas</option>${Object.entries(TIPOS_FOTO).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>Turma<select name="turma"><option value="">Todas</option>${turmaOptions('')}</select></label>
+      <label>Evento<select name="evento"><option value="">—</option>${evOpts}</select></label>
+      <div class="row2"><label>De<input type="date" name="de" class="input"></label><label>Até<input type="date" name="ate" class="input"></label></div>
+      <label>Relato da visita (opcional)<textarea name="texto" rows="3" class="input"></textarea></label>
       <button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="conferenciaTurma"><h3>Conferência de uma turma</h3><p class="muted small">Os 4 itens mês a mês, assiduidade, resumo do período e todas as observações da turma.</p>
-      <label>Turma<select name="turma">${turmaOptions('', true)}</select></label><label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><button class="btn primary">Gerar PDF</button></form>
+      <label>Turma<select name="turma">${turmaOptions('', true)}</select></label><label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><label class="check"><input type="checkbox" name="fotos"> incluir fotos da turma</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="conferenciaAnual"><h3>Conferência pedagógica anual</h3><p class="muted small">Quadro do ano por turma e mês (itens em dia de 4), resumo por área, por item e por professor, e todas as pendências.</p>
       <label>Ano<input type="number" name="ano" value="${thisMonth().slice(0, 4)}" min="2020" max="2100" class="input"></label><label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="frequencia"><h3>Frequência da turma</h3><p class="muted small">Gráfico de assiduidade, resumo por aluno e mapa de chamada.</p>
@@ -741,7 +771,7 @@ routes.relatorios = () => {
     <form class="card report" data-report="alertas"><h3>Faltas consecutivas (secretaria)</h3><p class="muted small">Alunos com 2 faltas seguidas (contatar) e 3+ (aptos a desligamento), com telefones e contatos feitos.</p>
       <label>Área${areaSel('area')}</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="evento"><h3>Evento: participantes e documentação</h3><p class="muted small">Lista nominal com a situação de cada documento e as pendências.</p>
-      <label>Evento<select name="evento" required>${evOpts || '<option value="">Nenhum evento</option>'}</select></label><button class="btn primary">Gerar PDF</button></form>
+      <label>Evento<select name="evento" required>${evOpts || '<option value="">Nenhum evento</option>'}</select></label><label class="check"><input type="checkbox" name="fotos"> incluir fotos do evento</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="autorizacoes"><h3>Termos de autorização</h3><p class="muted small">Uma página por aluno para o responsável assinar.</p>
       <label>Evento<select name="evento" required>${evOpts || '<option value="">Nenhum evento</option>'}</select></label><label class="check"><input type="checkbox" name="pend"> só quem ainda não entregou</label><button class="btn primary">Gerar PDF</button></form>
     <form class="card report" data-report="turmas"><h3>Turmas e alunos</h3><p class="muted small">Relação nominal de alunos ativos por turma, com contatos e presença.</p>
@@ -750,16 +780,25 @@ routes.relatorios = () => {
   view.querySelectorAll('form.report').forEach(f => f.addEventListener('submit', ev => {
     ev.preventDefault();
     const v = Object.fromEntries(new FormData(f));
+    v.turmasSel = new FormData(f).getAll('turmas');
     const gen = {
       conferencia: () => PDF.conferencia(v.mes || thisMonth(), v.area),
       conferenciaAnual: () => PDF.conferenciaAnual(String(v.ano || thisMonth().slice(0, 4)), v.area),
-      pedagogico: () => PDF.pedagogico(v.tipo, v.ref || thisMonth()),
-      conferenciaTurma: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.conferenciaTurma(v.turma, String(v.ano || thisMonth().slice(0, 4))); },
+      pedagogico: () => PDF.pedagogico(v.tipo, v.ref || thisMonth(), !!v.fotos),
+      avaliacao: () => PDF.avaliacao(v.tipo, v.ref || thisMonth()),
+      prestacao: () => {
+        if (!v.de || !v.ate || v.de > v.ate) throw new Error('Informe o período corretamente');
+        const turmas = v.turmasSel.length ? v.turmasSel : turmasAtivas(v.area).map(t => t.id);
+        return PDF.prestacao({ projeto: v.projeto.trim(), processo: v.processo.trim(), de: v.de, ate: v.ate, area: v.area, turmas, obs: v.obs.trim(), fotos: !!v.fotos,
+          metaBenef: +v.metaBenef || null, metaAulas: +v.metaAulas || null, metaCH: +v.metaCH || null, metaEventos: +v.metaEventos || null, metaFreq: +v.metaFreq || null });
+      },
+      fotografico: () => PDF.fotografico({ tipo: v.tipo, turma: v.turma, evento: v.evento, de: v.de, ate: v.ate, texto: v.texto.trim() }),
+      conferenciaTurma: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.conferenciaTurma(v.turma, String(v.ano || thisMonth().slice(0, 4)), !!v.fotos); },
       frequencia: () => { if (!v.turma) throw new Error('Selecione a turma'); return PDF.frequenciaTurma(v.turma, v.de, v.ate); },
       geral: () => PDF.assiduidadeGeral(v.area, v.de, v.ate),
       alertas: () => PDF.alertas(v.area),
       desligados: () => PDF.desligados(v.area, v.de, v.ate),
-      evento: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.eventoLista(v.evento); },
+      evento: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.eventoLista(v.evento, !!v.fotos); },
       autorizacoes: () => { if (!v.evento) throw new Error('Cadastre um evento'); return PDF.autorizacoes(v.evento, !!v.pend); },
       turmas: () => PDF.turmasAlunos(v.area),
     }[f.dataset.report];

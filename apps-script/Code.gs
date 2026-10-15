@@ -20,9 +20,10 @@ function ss_() {
 }
 
 const SCHEMA = {
-  Turmas: ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'criado_em', 'inicio'],
+  Turmas: ['id', 'area', 'nome', 'modalidade', 'professor', 'dias_horario', 'local', 'ativa', 'criado_em', 'inicio',
+    'meta_alunos', 'aulas_previstas_mes', 'duracao_aula'],
   Alunos: ['id', 'turma_id', 'nome', 'data_nascimento', 'responsavel', 'telefone', 'ativo',
-    'data_desligamento', 'motivo_desligamento', 'criado_em'],
+    'data_desligamento', 'motivo_desligamento', 'criado_em', 'sexo', 'escola', 'tipo_escola', 'bairro'],
   Conferencias: ['id', 'turma_id', 'mes', 'plano_aula', 'relatorio_aulas', 'registro_chamada',
     'fechamento_mensal', 'observacoes', 'conferido_em'],
   Frequencia: ['id', 'turma_id', 'aluno_id', 'data', 'status'],
@@ -37,7 +38,11 @@ const SCHEMA = {
   Ocorrencias: ['id', 'numero', 'tipo', 'gravidade', 'status', 'turma_id', 'aluno_id', 'aluno_nome', 'data_nascimento', 'responsavel',
     'telefone', 'data_ocorrencia', 'hora', 'local', 'descricao', 'providencias', 'testemunha_nome', 'testemunha_funcao',
     'data_emissao', 'assinatura_digital', 'criado_em', 'atualizado_em'],
+  Fotos: ['id', 'tipo', 'turma_id', 'evento_id', 'data', 'mes', 'legenda', 'miniatura', 'largura', 'altura', 'partes', 'criado_em'],
+  // imagem em tamanho de relatório, dividida em partes (limite de 50 mil caracteres por célula); não vai no getAll
+  FotosDados: ['id', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'],
 };
+const LAZY_ = { FotosDados: true };
 
 /* ---------- Menu na planilha ---------- */
 
@@ -149,7 +154,7 @@ function handle_(req) {
     if (req.key !== key) return json_({ ok: false, error: 'Senha inválida', auth: false });
 
     const lock = LockService.getScriptLock();
-    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia'];
+    const writes = ['save', 'saveMany', 'remove', 'removeMany', 'replaceFrequencia', 'saveFoto', 'removeFoto'];
     if (writes.indexOf(req.action) !== -1) lock.waitLock(20000);
     try {
       switch (req.action) {
@@ -159,6 +164,9 @@ function handle_(req) {
         case 'saveMany': return json_({ ok: true, data: saveMany_(req.sheet, req.records || []) });
         case 'remove': removeMany_(req.sheet, [req.id]); return json_({ ok: true });
         case 'removeMany': removeMany_(req.sheet, req.ids || []); return json_({ ok: true });
+        case 'saveFoto': return json_({ ok: true, data: saveFoto_(req.foto, req.dados) });
+        case 'removeFoto': removeMany_('FotosDados', [req.id]); removeMany_('Fotos', [req.id]); return json_({ ok: true });
+        case 'getFotos': return json_({ ok: true, data: getFotos_(req.ids || []) });
         case 'replaceFrequencia': return json_({ ok: true, data: replaceFrequencia_(req.turma_id, req.datas || [], req.registros || []) });
         default: return json_({ ok: false, error: 'Ação desconhecida: ' + req.action });
       }
@@ -221,7 +229,7 @@ function read_(name) {
 
 function getAll_() {
   const out = {};
-  Object.keys(SCHEMA).forEach(function (n) { out[n] = read_(n); });
+  Object.keys(SCHEMA).forEach(function (n) { if (!LAZY_[n]) out[n] = read_(n); });
   return out;
 }
 
@@ -257,7 +265,7 @@ function saveMany_(name, records) {
 function removeMany_(name, ids) {
   if (!ids.length) return;
   const sh = sheet_(name);
-  const data = sh.getDataRange().getValues();
+  const data = sh.getRange(1, 1, Math.max(1, sh.getLastRow()), 1).getValues(); // só a coluna id
   const set = {};
   ids.forEach(function (id) { set[String(id)] = true; });
   for (let i = data.length - 1; i >= 1; i--) {
@@ -286,4 +294,37 @@ function replaceFrequencia_(turmaId, datas, registros) {
   sh.clearContents();
   sh.getRange(1, 1, keep.length, headers.length).setNumberFormat('@').setValues(keep);
   return registros.length;
+}
+
+/* ---------- Fotos (comprovação) ---------- */
+
+/** Grava os dados da imagem (anexa uma linha, sem ler a aba inteira) e os metadados da foto. */
+function saveFoto_(foto, dados) {
+  if (!foto || !dados) throw new Error('Foto inválida');
+  if (!foto.id) foto.id = Utilities.getUuid().slice(0, 12);
+  const sh = sheet_('FotosDados');
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  dados.id = foto.id;
+  sh.getRange(sh.getLastRow() + 1, 1, 1, headers.length).setNumberFormat('@')
+    .setValues([headers.map(function (h) { return dados[h] === undefined ? '' : String(dados[h]); })]);
+  return saveMany_('Fotos', [foto])[0];
+}
+
+/** Devolve as imagens completas (partes unidas) das fotos pedidas. */
+function getFotos_(ids) {
+  const sh = sheet_('FotosDados');
+  const last = sh.getLastRow();
+  if (last < 2 || !ids.length) return [];
+  const lc = sh.getLastColumn();
+  const col = sh.getRange(2, 1, last - 1, 1).getValues();
+  const want = {};
+  ids.forEach(function (id) { want[String(id)] = true; });
+  const out = [];
+  for (let i = 0; i < col.length; i++) {
+    const id = String(col[i][0]);
+    if (!want[id]) continue;
+    const row = sh.getRange(i + 2, 1, 1, lc).getValues()[0];
+    out.push({ id: id, imagem: row.slice(1).map(cell_).join('') });
+  }
+  return out;
 }
