@@ -200,6 +200,7 @@ function handle_(req) {
         case 'syncAta': return json_({ ok: true, data: syncAta_(req.ata, req.pdf) });
         case 'removerAta': removerAta_(req.id); return json_({ ok: true });
         case 'planilhaAtas': return json_({ ok: true, data: planilhaAtas_().getUrl() });
+        case 'organizarPlanilhas': return json_({ ok: true, data: organizarPlanilhas_() });
         case 'enviarDrive': return json_({ ok: true, data: enviarDrive_(req.destino, req.subpasta, req.nome, req.pdf) });
         case 'syncOcorrencia': return json_({ ok: true, data: syncOcorrencia_(req.ocorrencia, req.pdf) });
         case 'removerOcorrencia': removerOcorrencia_(req.id); return json_({ ok: true });
@@ -694,4 +695,19 @@ function removerAta_(id) {
 /** Executar no editor para criar a planilha de atas agora (mostra o link no registro de execução). */
 function criarPlanilhaAtas() {
   Logger.log('Planilha de atas: ' + planilhaAtas_().getUrl());
+}
+
+/** Coloca as planilhas de controle nas pastas do PEDAGOGICO-2026 (atas → REUNIÕES, ocorrências → OCORRÊNCIAS/ADVERTÊNCIAS). */
+function organizarPlanilhas_() {
+  const out = {};
+  [['atas', planilhaAtas_().getId(), 'reunioes'], ['ocorrencias', PLANILHA_OCORRENCIAS, 'ocorrencias']].forEach(function (x) {
+    try {
+      const f = DriveApp.getFileById(x[1]), destino = pastaDestino_(x[2]);
+      const ps = f.getParents(); let ja = false;
+      while (ps.hasNext()) if (ps.next().getId() === destino.getId()) ja = true;
+      if (!ja) f.moveTo(destino);
+      out[x[0]] = destino.getName();
+    } catch (e) { out[x[0]] = 'erro: ' + e.message; }
+  });
+  return out;
 }
