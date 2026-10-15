@@ -394,6 +394,10 @@ function removeFoto_(id) {
 /** Executar uma vez no editor para autorizar o acesso ao Google Drive. */
 function autorizarDrive() {
   Logger.log('Pasta de fotos: ' + DriveApp.getFolderById(PASTA_FOTOS).getName());
+  // testa a gravação (criar e apagar uma pasta) para garantir a permissão completa do Drive
+  const teste = pastaPedagogico_().createFolder('teste de permissão - pode apagar');
+  teste.setTrashed(true);
+  Logger.log('Permissão de gravação no Drive OK em: ' + pastaPedagogico_().getName());
 }
 
 /* ---------- Painel da diretoria (somente leitura, dados mínimos) ---------- */
